@@ -16,6 +16,8 @@ results
 eval_compare/
 ckpts/*
 !ckpts/README.md
+!ckpts/XVoice_KO_Replay_1100h_SylFix_v2/
+!ckpts/XVoice_KO_Replay_1100h_SylFix_v2/vocab.txt
 data/MSS_Korean_Train_ipa_v6/
 data/XVoice_KOEN_CS_249h_ipa_v6
 data/XVoice_Stage1_1100h_ipa_v6

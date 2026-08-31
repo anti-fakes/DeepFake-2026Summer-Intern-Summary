@@ -396,6 +396,8 @@ Stage 1 inference는 [`basic_stage1.toml`](src/x_voice/infer/examples/basic/basi
 
 Ours 15.5k를 실행하려면 TOML의 주요 부분을 다음처럼 수정합니다.
 
+> **Checkpoint 안내:** `vocab.txt`는 이 저장소에 포함되어 있지만, `model_15500.pt`는 약 5.1GB이므로 GitHub에 포함되어 있지 않습니다. 별도로 전달받은 Checkpoint를 `ckpts/XVoice_KO_Replay_1100h_SylFix_v2/model_15500.pt`에 배치해야 합니다.
+
 ```toml
 model = "XVoice_Base_Stage1"
 model_cfg = "src/x_voice/configs/XVoice_Base_Stage1.yaml"
@@ -432,7 +434,7 @@ set -euo pipefail
 
 CONFIG="src/x_voice/infer/examples/basic/basic_stage1.toml"
 BASE_CKPT="ckpts/hf/XVoice_Base_Stage1/model_600000.safetensors"
-BASE_VOCAB="ckpts/hf/XVoice_Base_Stage1/vocab.txt"
+BASE_VOCAB="src/x_voice/infer/examples/vocab.txt"
 OURS_CKPT="ckpts/XVoice_KO_Replay_1100h_SylFix_v2/model_15500.pt"
 OURS_VOCAB="ckpts/XVoice_KO_Replay_1100h_SylFix_v2/vocab.txt"
 REF_AUDIO="reference_audio_ko.wav"
@@ -446,6 +448,13 @@ TEXTS=(
 )
 
 mkdir -p "$OUTPUT_DIR"
+
+for required_file in "$BASE_CKPT" "$BASE_VOCAB" "$OURS_CKPT" "$OURS_VOCAB" "$REF_AUDIO"; do
+  if [[ ! -f "$required_file" ]]; then
+    echo "Missing required file: $required_file" >&2
+    exit 1
+  fi
+done
 
 for i in "${!TEXTS[@]}"; do
   number=$((i + 1))

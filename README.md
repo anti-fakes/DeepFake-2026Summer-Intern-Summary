@@ -1,267 +1,313 @@
-# DeepFake-2026Summer-Intern-Summary(LEE Minseo)
+# DeepFake-2026Summer-Intern-Summary (LEE Minseo)
+
+> **2026 하계 연구연수 최종 정리**
+> **Research Period:** 2026.07.01 – 2026.08.31
+
+본 연구는 [X-Voice](https://github.com/sunnyxrxrx/X-Voice)를 기반으로 진행하였으며, **한국어 Zero-shot Cross-lingual Voice Cloning 성능 향상**을 목표로 합니다.
+
+Audio Deepfake 및 Voice Cloning 기술을 조사하고, X-Voice의 공개 Stage 1 모델을 기반으로 한국어 음성 데이터 Fine-tuning과 Multilingual Data Replay를 수행했습니다. 또한 한국어 생성 과정에서 발생하는 발음 오류의 원인을 Text Frontend 관점에서 분석하고 개선했습니다.
+
+---
+
+## 1. Audio Deepfake & Voice Cloning Survey
+
+### 1.1 Audio Deepfake
+
+**Audio Deepfake**는 AI 기반 음성 생성 및 변환 기술을 이용하여 실제 사람이 발화하지 않은 음성을 생성하거나, 기존 음성을 다른 화자의 음성처럼 변조하는 기술입니다.
+
+Audio Deepfake 생성 방식은 크게 **Speech Synthesis (TTS)**와 **Voice Conversion (VC)**으로 구분할 수 있습니다.
+
+| Category | Input | Description |
+|---|---|---|
+| **Speech Synthesis (TTS)** | Text | 입력 Text를 기반으로 새로운 Speech 생성 |
+| **Voice Conversion (VC)** | Source Speech | 발화 내용은 유지하면서 화자의 음색 및 특성 변환 |
+
+최근 TTS는 단순한 Text-to-Speech를 넘어, 짧은 **Reference Audio**만으로 대상 화자의 음색과 발화 특성을 재현하는 **Voice Cloning**으로 확장되고 있습니다.
+
+### 1.2 TTS Framework
+
+일반적인 TTS 시스템은 **Text Analysis → Acoustic Model → Vocoder**의 흐름으로 구성됩니다.
 
 <p align="center">
-  <img width="320" alt="X-Voice" src="X-Voice_icon.png" />
+  <img src="tts_framework.png" width="1000" alt="TTS Framework" />
 </p>
 
-> 2026 하계 연구연수 최종 정리 · 연구 기간: 2026.07.01–2026.08.31
+- **Text Analysis**: Text Normalization, Word Segmentation, POS Tagging, Prosody Prediction, G2P 등
+- **Acoustic Model**: Linguistic Feature를 Acoustic Feature로 변환
+- **Vocoder**: Acoustic Feature를 최종 Speech Waveform으로 변환
 
-이 저장소는 [X-Voice](https://github.com/sunnyxrxrx/X-Voice)를 기반으로 한국어 zero-shot cross-lingual voice cloning의 **발음 정확도와 발화 안정성**, **한·영 code-switching 처리**를 개선한 연구 결과입니다. 공개 checkpoint의 한국어 성능을 재현하고, 데이터·학습·평가 파이프라인을 구축한 뒤, 오류 원인을 `g2pK → eSpeak → IPA tokenizer`와 language routing에서 찾아 코드로 수정했습니다.
+본 연구에서는 한국어 발음 오류를 분석하면서 특히 **Text Normalization → Language Routing → G2P → IPA Tokenization** 과정에 집중했습니다.
 
-- **Survey**: voice cloning 기술, 평가 지표, 한국어 음성 데이터셋 11종 조사
-- **Research & Implementation**: 데이터 정제, fine-tuning, 평가 재현, 한국어 음절·숫자·단위·한영 혼합 처리 개선
+### 1.3 Voice Cloning
 
-```mermaid
-flowchart LR
-  A[Voice Cloning 및<br/>데이터셋 Survey] --> B[600K Baseline<br/>재현]
-  B --> C[한국어 500 h<br/>Fine-tuning]
-  C --> D[다국어 Replay<br/>1,100 h]
-  D --> E[G2P·IPA·Routing<br/>원인 분석]
-  E --> F[음절·숫자·단위<br/>처리 개선]
-```
+Voice Cloning은 TTS가 Text의 내용뿐 아니라 특정 화자의 **Speaker Identity**까지 재현하도록 확장된 기술입니다.
 
-## 1. 연구 배경과 목표
+| Method | Description |
+|---|---|
+| **Speaker Adaptation** | 대상 화자 데이터로 모델을 Fine-tuning |
+| **Few-shot Voice Cloning** | 소량의 대상 화자 음성으로 Adaptation |
+| **Zero-shot Voice Cloning** | 짧은 Reference Audio만으로 별도 화자 학습 없이 생성 |
 
-X-Voice는 flow matching 기반 다국어 TTS로, 짧은 reference audio만으로 별도 화자 학습 없이 30개 언어의 음성을 생성합니다. 하지만 공개 Stage 1 600K checkpoint를 한국어·영어·중국어에 적용했을 때 다음 문제가 관찰됐습니다.
+본 연구에서 사용한 [X-Voice](https://github.com/sunnyxrxrx/X-Voice)는 **Zero-shot Voice Cloning** 방식의 모델이며, 다국어 환경에서 Reference Audio와 다른 언어의 음성을 생성하는 **Cross-lingual Voice Cloning**을 지원합니다.
 
-- 한국어 음소가 부자연스럽거나 일부 발화가 길게 늘어남
-- 숫자와 조수사(예: `3명`)가 문맥에 맞지 않게 읽힘
-- 영문 단위(예: `5km`)의 발음이 문장 내 위치에 따라 달라짐
-- 한·영 code-switching에서 숫자·영문·한글 span 분리로 자연스러움 저하
-- 공개 checkpoint/evaluation code의 한국어 WER가 논문 보고값과 크게 다름
+### 1.4 Evaluation Metrics
 
-연구 목표는 다음과 같습니다.
+| Evaluation Target | Metric | Description | Better |
+|---|---|---|:---:|
+| Pronunciation / Content | **WER / CER** | Target Text와 ASR Transcript의 오류율 | ↓ |
+| Speaker Similarity | **SIM-o / SECS** | Reference와 Generated Speech의 Speaker Embedding Similarity | ↑ |
+| Naturalness | **MOS** | Human Listener가 평가한 자연스러움 | ↑ |
+| Speech Quality | **DNSMOS** | 비침습 Speech Quality Prediction | ↑ |
+| Prosody | **FFE** | Pitch / Voicing Error | ↓ |
+| Generation Speed | **RTF** | Generation Time / Audio Duration | ↓ |
 
-1. AI Hub 한국어 음성으로 X-Voice의 한국어 적응 성능을 높인다.
-2. 한국어 단독 학습의 language bias와 catastrophic forgetting을 multilingual replay로 완화한다.
-3. WER·SIM-o 중심 평가 파이프라인을 구축해 결과를 재현한다.
-4. 한국어 G2P/IPA 변환과 숫자·단위 routing 오류를 코드 수준에서 진단·수정한다.
-5. 원본과 개선 구현을 함께 보존해 변경 효과를 비교 가능하게 한다.
+최종 정량 평가는 X-Voice Benchmark와 동일하게 **WER**과 **SIM-o**를 중심으로 수행했습니다.
 
-## 2. Survey
+---
 
-### 2.1 Voice cloning 및 평가 지표
+## 2. X-Voice
 
-Voice cloning은 TTS가 텍스트 내용뿐 아니라 특정 화자의 음색과 발화 특성까지 재현하도록 확장된 기술입니다.
+본 연구의 Baseline Model로 [X-Voice](https://github.com/sunnyxrxrx/X-Voice)를 사용했습니다.
 
-| 방식 | 입력/학습 방식 | 특징 |
-|---|---|---|
-| Speaker adaptation | 대상 화자 데이터로 fine-tuning | 화자마다 별도 학습 필요 |
-| Few-shot cloning | 소량의 대상 화자 음성으로 적응 | 적은 데이터지만 화자별 학습 필요 |
-| Zero-shot cloning | 짧은 reference audio를 조건으로 즉시 생성 | 미등록 화자도 별도 학습 불필요 |
-| Cross-lingual cloning | reference와 다른 언어의 target text 생성 | 화자 정체성을 유지하며 언어 전환 |
+X-Voice는 약 **420K hours**의 다국어 음성으로 학습된 약 **0.4B** 규모의 Non-Autoregressive Voice Cloning 모델로, 하나의 모델에서 **30개 언어**의 Zero-shot Cross-lingual Voice Cloning을 지원합니다.
 
-일반 TTS의 `Text analysis → Acoustic model → Vocoder` 중 이 연구는 normalization, language routing, G2P와 IPA tokenization에 집중했습니다. 평가는 한 지표가 아닌 다음 지표를 함께 검토했습니다.
+주요 특징은 다음과 같습니다.
 
-| 평가 대상 | 지표 | 의미 |
-|---|---|---|
-| 발음/내용 정확도 | WER, CER ↓ | ASR 전사와 target text의 오류율 |
-| 화자 유사도 | SIM-o/SECS ↑ | reference와 생성 음성 embedding의 cosine similarity |
-| 자연스러움 | MOS ↑ | 청취자의 1–5점 평균 |
-| 음질 | DNSMOS ↑ | 비침습 음질 예측 점수 |
-| 운율 | FFE ↓ | pitch/voicing 오류 구간 비율 |
-| 생성 속도 | RTF ↓ | 생성 시간 ÷ 음성 길이 |
+- **Conditional Flow Matching** 기반 Speech Generation
+- **Unified Multilingual Representation**
+- **Dual-Level Language Injection**
+- **Decoupled & Scheduled CFG**
+- **Two-stage Training**
 
-본 실험의 정량 비교는 공개 benchmark와 맞추기 위해 **WER와 SIM-o**를 중심으로 수행했습니다.
+### 2.1 Two-stage Training
 
-### 2.2 한국어 음성 데이터셋 11종 조사
+- **Stage 1**: F5-TTS-v1-Base를 초기화 모델로 사용하여 대규모 Multilingual Data로 600K updates 학습
+- **Stage 2**: Stage 1 Checkpoint를 기반으로 Synthetic Reference를 활용한 Transcript-Free Voice Cloning 학습
 
-낭독/자연발화, 화자 다양성, 숫자·외래어·code-switching, 방언과 라벨 구조가 다른 데이터셋을 조사했습니다.
+본 연구에서는 한국어 데이터를 직접 추가 학습하고 성능 변화를 분석하기 위해 **Stage 1을 기준으로 실험**했습니다.
 
-| 데이터셋 | 발화 형태 | 핵심 특징 | 활용 관점 |
+<p align="center">
+  <img src="xvoice_stage1.png" width="950" alt="X-Voice Stage 1" />
+</p>
+
+### 2.2 Baseline Inference
+
+공개 Stage 1 600K Checkpoint를 한국어·영어·중국어에 적용하여 Baseline Inference를 수행했습니다.
+
+- 한국어 생성 음성에서 **부자연스러운 발음**
+- 일부 발화가 비정상적으로 **길게 늘어지는 현상**
+- 한·영 Code-switching에서 **발음 및 자연스러움 저하**
+- 공개 Evaluation Code의 한국어 WER이 논문 보고값과 크게 다른 현상
+
+이 결과를 바탕으로 **한국어 데이터 Fine-tuning**과 **Korean Frontend 원인 분석**을 진행했습니다.
+
+---
+
+## 3. Korean Speech Dataset Survey
+
+한국어 Fine-tuning 및 후속 실험에 적합한 데이터를 선정하기 위해 **11개 한국어 음성 데이터셋의 스크립트 구성과 특징**을 조사했습니다.
+
+### 3.1 Dataset Comparison
+
+| Dataset | Script Type | Main Characteristics | Research Use |
 |---|---|---|---|
-| AI Hub 다화자 음성합성 | 단문 낭독 | 10,152 h, 3,495명, WAV–전사 pair | 대규모 한국어 fine-tuning 주 데이터 |
-| AI Hub 감성·발화 스타일 | 감정·스타일 낭독 | 7개 감정과 5개 발화 스타일 | 억양·감정·운율 확장 |
-| KSS | 단일 화자 낭독 | 원문·확장문·자모 분해문 | normalization 비교 |
-| Deeply Korean Read Speech | 2인 낭독 | 감성, 기기·거리·장소 라벨 | 환경 강건성 |
-| Zeroth Korean | 다화자 낭독 | 긴 문어체, 발음사전·언어모델 | ASR/장문 평가 |
-| KsponSpeech | 2인 자유대화 | 간투사·반복·수정·말 끊김 | 자연발화 확장 |
-| AI Hub 숫자 패턴 발화 | 문맥형 숫자 낭독 | ITN/TN pair, 날짜·금액·주소·비율 | 숫자·조수사 TN |
-| AI Hub 한국인 외래어 발화 | 단어·짧은 문장 | 외래어·고유명사의 한국식 발음 | 외래어 분석 |
-| AI Hub 한영 혼합 인식 | 2인 대화 | 한국어 전사와 영어 `originalForm` | code-switching |
-| AI Hub 중·노년층 방언 | 낭독+자유발화+대화 | 강원·경상 방언, 표준어 대응 | 지역·연령 다양성 |
-| Seoul Corpus | 인터뷰 자연발화 | 철자·실제 발음·음소 TextGrid | 음성학 분석 |
+| [AI Hub 다화자 음성합성](https://www.aihub.or.kr/aihubdata/data/view.do?aihubDataSe=data&currMenu=115&dataSetSn=542&topMenu=100) | 단문 낭독 | 다양한 일반인 화자의 깨끗한 TTS 발화 | **한국어 Fine-tuning 주 데이터** |
+| [AI Hub 감성 및 발화 스타일별 음성합성](https://www.aihub.or.kr/aihubdata/data/view.do?currMenu=115&dataSetSn=466&topMenu=100) | 감성·스타일 낭독 | 감정에 따른 억양·강세·속도·운율·말투 | Prosody / Emotion |
+| [KSS](https://huggingface.co/datasets/Bingsu/KSS_Dataset) | 단일 화자 문장 낭독 | Original / Expanded / Decomposed Script 제공 | Text Normalization 비교 |
+| [Deeply Korean Read Speech](https://www.openslr.org/97/) | 2인 화자 낭독 | Text Sentiment × Voice Sentiment + 녹음 환경 변화 | 환경·감성 다양성 |
+| [Zeroth Korean](https://www.openslr.org/40/) | 다화자 문장 낭독 | 비교적 긴 정형 문장, Audio/Text 1:1 | 장문·ASR 평가 |
+| [KsponSpeech](https://www.aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=data&dataSetSn=123) | 2인 자유대화 | 머뭇거림·반복·말 고침 등 실제 구어 | 자연발화 |
+| [AI Hub 숫자가 포함된 패턴 발화](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=484) | 패턴 문장 낭독 | ScriptITN / ScriptTN, 문맥별 숫자 읽기 | **숫자·조수사 TN** |
+| [AI Hub 한국인 외래어 발화](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=131) | 단어·짧은 문장 | 한국인의 외래어·외국 고유명사 발음 | 외래어 발음 |
+| [AI Hub 한영 혼합 인식](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=71260) | 2인 대화 | 한국어 문장 속 영어계 표현, `originalForm` 제공 | **Code-switching** |
+| [AI Hub 중·노년층 한국어 방언](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=71517) | 낭독 + 자유발화 + 2인 대화 | 강원·경상 방언 및 중·노년층 말투 | 지역·연령 다양성 |
+| [Seoul Corpus](https://www.openslr.org/113/) | 인터뷰형 자연발화 | 서울말 자연발화 + 음소 수준 TextGrid Label | 음성학 분석 |
 
-이번 학습에는 깨끗한 다화자 음성과 충분한 발화 수를 갖춘 **AI Hub 다화자 음성합성 데이터**를 우선 사용했습니다. 숫자 패턴, 한영 혼합, 외래어 데이터는 후속 학습과 전용 평가셋에 특히 적합합니다.
+### 3.2 Script Characteristics
 
-## 3. Research & Implementation
+조사한 데이터셋은 발화 형태에 따라 다음과 같이 구분할 수 있습니다.
 
-### 3.1 데이터 전처리
+- **정제된 낭독 중심**: 다화자 음성합성 / 감성 및 발화 스타일 / KSS / Deeply Korean Read Speech / Zeroth Korean / 숫자 패턴 발화
+- **자연발화·대화 중심**: KsponSpeech / Seoul Corpus
+- **특정 발음 특화**: 한국인 외래어 발화 / 숫자 패턴 발화
+- **언어·지역적 다양성 특화**: 한영 혼합 인식 / 중·노년층 한국어 방언
 
-1. WAV–JSON 전사를 연결해 `file_path | duration | text` metadata 생성
-2. 0.5–30초 발화만 유지
-3. DNSMOS 1.5 미만 저품질 음성 제거
-4. 동일 전사문이 20회를 초과해 반복되는 샘플 제거
-5. 문자 수/음성 길이로 발화 속도를 계산하고 IQR 이상치 제거
-6. 한국어 전사문을 IPA로 변환
+특히 숫자 패턴 데이터는 동일한 숫자라도 **비밀번호·주소·날짜·금액·비율·스포츠 기록 등 문맥에 따라 읽는 방식이 달라지는 한국어 특성**을 포함하고 있으며, 한영 혼합 인식 데이터는 한국어 대화 속 영어계 표현과 영어 원형을 함께 제공하여 Code-switching 분석에 활용할 수 있습니다.
+
+### 3.3 Selected Training Dataset
+
+실제 Fine-tuning에는 **AI Hub 다화자 음성합성 데이터**를 사용했습니다.
+
+- 총 **10,152 hours**
+- 총 **3,495 speakers**
+- 10대–60대 이상의 다양한 연령 및 성별
+- 화자별 약 2,000–2,400개 발화
+- AI 비서·스마트홈·날씨·의료·스포츠·생활정보 등 다양한 단문
+- WAV + JSON Transcript Pair
+
+다수의 일반인 화자가 정해진 문장을 명확하게 읽는 형태로 구성되어 있어 **다양한 Speaker Identity를 유지하면서 한국어 발음과 음색을 학습하기에 적합**하다고 판단했습니다.
+
+
+---
+
+## 4. Dataset Preprocessing
+
+AI Hub 다화자 음성합성 데이터를 X-Voice 학습 형식으로 변환하고 품질을 정제했습니다.
+
+1. WAV–JSON Pair 구성 및 Duration 계산
+2. **0.5–30 sec** 발화만 유지
+3. **DNSMOS < 1.5** 저품질 음성 제거
+4. 동일 Transcript가 **20회 초과** 반복되는 Sample 제거
+5. Speaking Rate 계산 후 **IQR Outlier** 제거
+6. Transcript를 X-Voice Pronunciation Token으로 변환
 7. `raw.arrow`, `vocab.txt`, `vocab_stats.txt`, `duration.json` 생성
 
-원본 데이터 전체는 10,152시간/3,495명이지만 실험에는 정제·샘플링한 subset을 사용했습니다. 원천 데이터와 checkpoint는 라이선스·용량 문제로 포함하지 않습니다.
 
-### 3.2 Experiment 1 — Korean-only fine-tuning
+---
 
-- 초기 모델: X-Voice Stage 1 600K
-- 학습 데이터: AI Hub 다화자 한국어 500 h
-- epoch 1, learning rate `7.5e-5`
+## 5. Fine-tuning
 
-한국어 성능은 개선됐으나 모델 표현이 한국어에 편향되고 multilingual 능력 일부가 저하되는 catastrophic forgetting이 관찰됐습니다.
+### 5.1 Korean-only Fine-tuning
 
-### 3.3 Experiment 2 — Multilingual data replay
+먼저 Stage 1 600K Checkpoint를 기반으로 **AI Hub 한국어 500 h**를 사용하여 Fine-tuning을 수행했습니다.
 
-한국어 적응과 원래의 다국어 능력을 함께 보존하도록 총 1,100 h replay를 구성했습니다.
+한국어 생성 성능은 향상되었지만, 한국어 데이터만 반복적으로 학습하면서 기존 Multilingual Representation이 손상되는 **Catastrophic Forgetting**이 관찰되었습니다.
 
-| 구성 | 시간 |
+### 5.2 Multilingual Data Replay
+
+한국어 Adaptation과 기존 Multilingual 성능을 함께 유지하기 위해 **Multilingual Data Replay**를 적용했습니다.
+
+| Data | Hours |
 |---|---:|
-| AI Hub 한국어 | 500 h |
-| 영어 | 100 h |
-| 한국어·중국어·일본어 | 각 50 h |
-| 독·불·서·이·포·러 | 각 25 h |
-| 나머지 지원 언어 | 각 25 h |
+| AI Hub Korean | 500 h |
+| English | 100 h |
+| Chinese | 50 h |
+| Japanese | 50 h |
+| Original Korean | 50 h |
+| German / French / Spanish / Italian / Portuguese / Russian | 25 h each |
+| Remaining Languages | 10 h each |
 
-초기 모델은 Stage 1 600K, epoch는 1, learning rate는 `5e-6`입니다. 설정은 [`XVoice_KO_Replay_Stage1.yaml`](src/x_voice/configs/XVoice_KO_Replay_Stage1.yaml), 음절 보정 재학습은 [`XVoice_KO_Replay_SylFix_Stage1.yaml`](src/x_voice/configs/XVoice_KO_Replay_SylFix_Stage1.yaml), 한·영 code-switching 249 h 실험(`2e-6`)은 [`XVoice_KOEN_CS_249h_Stage1.yaml`](src/x_voice/configs/XVoice_KOEN_CS_249h_Stage1.yaml)에 기록했습니다.
 
-### 3.4 평가 재현과 benchmark
+---
 
-공개 benchmark는 30개 언어, 언어별 500개 발화와 100명 이상의 화자를 포함합니다. 대부분 Common Voice, 한국어는 Emilia, 베트남어는 Dolly-Audio, 크로아티아어는 ParlaSpeech-HR에서 수집합니다.
+## 6. Korean Frontend Analysis
 
-- 2–16초, 발화 속도 이상치 제거, RMS energy ≥ 0.02
-- Silero VAD로 앞뒤 silence 제거
-- ECAPA-TDNN reference–ground truth cosine similarity > 0.6
-- intra-/cross-lingual 조건에서 WER와 SIM-o 측정
+Fine-tuning 결과를 평가하는 과정에서 공개 Stage 1 600K Checkpoint의 한국어 WER이 논문의 결과보다 비정상적으로 높게 나타났습니다.
 
-관련 코드는 [`eval_infer_batch_original.py`](src/x_voice/eval/eval_infer_batch_original.py) / [`eval_infer_batch_improved.py`](src/x_voice/eval/eval_infer_batch_improved.py), [`run_wer.py`](src/x_voice/eval/utils/run_wer.py), [`eval_similarity.py`](src/x_voice/eval/eval_similarity.py), [`ecapa_tdnn.py`](src/x_voice/eval/ecapa_tdnn.py), [`dnsmos_local_wavscp_gpu.py`](src/x_voice/eval/utils/DNSMOS/dnsmos_local_wavscp_gpu.py)입니다.
+이에 Model Weight뿐 아니라 Text가 X-Voice 입력 Token으로 변환되는 전체 과정을 추적했습니다.
 
-### 3.5 Experiment 3 — 한국어 텍스트 처리 개선
+**Text → Language Routing → Text Normalization → g2pK → eSpeak → IPA → Tokenizer → X-Voice**
 
-공개 Stage 1 600K checkpoint의 한국어 WER는 `12.131`로 논문의 `2.42`와 큰 차이가 났습니다. upstream issue를 등록한 뒤 모델 입력 전 과정을 직접 추적했습니다.
 
-#### 원인 1: `g2pK` 자모 분해
+### 6.1 `g2pK to_syl`
 
-기존 `G2pk(no_space=False)`의 `to_syl=False` 동작은 `새로운`을 `ㅅ ㅐ ㄹ ㅗ ㅇ ㅜ ㄴ`처럼 분해합니다. 이 자모를 eSpeak에 넘기면서 비정상 IPA가 만들어졌습니다. [`ipa_v6_tokenizer.py`](src/x_voice/train/datasets/ipa_v6_tokenizer.py)를 다음처럼 바꿨습니다.
+한국어 G2P에 사용되는 `g2pK`의 `to_syl` 옵션을 분석했습니다.
 
-```python
-self.g2p = G2pk(no_space=False, to_syl=True)
-```
+- `to_syl=True` → 완성형 한글 음절 유지
+- `to_syl=False` → Hangul Jamo 단위로 분해
 
-모델 가중치와 inference 설정을 고정하고 이 옵션만 수정했을 때 WER가 **12.131 → 3.016**으로 감소했습니다.
+공개 X-Voice 코드에서는 `to_syl=False`가 사용되고 있었으며, 분해된 Jamo가 eSpeak로 전달되면서 **비정상적인 IPA Sequence**가 생성되는 것을 확인했습니다.
 
-#### 원인 2: 숫자·단위 normalization과 language routing
 
-기존 구현은 숫자를 `neutral`, 영문을 `en`, 한글을 `ko`로 분류해 같은 `5km`도 문장 위치에 따라 `[en] 5km` 또는 `[ko] 5` + `[en] km`로 갈랐습니다. 범용 normalization만으로는 `3명 → 세 명` 같은 조수사 규칙도 반영하기 어려웠습니다.
+Model Weight와 Inference Setting을 고정하고 `to_syl`만 `True`로 변경한 결과,
 
-```mermaid
-flowchart LR
-  A[오늘 5km를 이동했습니다] --> B[한국어 TN<br/>단위 확장 + N2gkPlus]
-  B --> C[숫자+Latin span 보호<br/>dominant script routing]
-  C --> D[g2pK<br/>to_syl=True]
-  D --> E[eSpeak IPA]
-  E --> F[Tokenizer]
-  F --> G[X-Voice Speech]
-```
+| Model / Setting | WER ↓ | SIM-o ↑ |
+|---|---:|---:|
+| Paper X-Voice Stage 1 | 2.42 | 0.723 |
+| Base 600K (Reproduced) | 12.131 | 0.7197 |
+| `to_syl=True` | **3.016** | - |
 
-- [`korean_tn.py`](src/x_voice/infer/korean_tn.py): N2gkPlus 연결, `km`, `GB`, `GHz`, `MB/s` 등 숫자+단위 확장
-- [`utils_infer_improved.py`](src/x_voice/infer/utils_infer_improved.py): 숫자+Latin 표현을 보호하고 dominant script로 routing
-- [`text_normalizer_improved.py`](src/x_voice/eval/text_normalizer_improved.py): 평가 시 한국어 N2gkPlus 적용
-- `*_original.py` / `*_improved.py`: 동일 입력에서 전후 비교 가능
+즉, 높은 한국어 WER의 주요 원인 중 하나가 Acoustic Model 자체가 아니라 **Korean Frontend의 Phonetic Representation**임을 확인했습니다.
 
-| 입력 | 기존 문제 | 개선 목표 |
-|---|---|---|
-| `3명이 회의에 참석했습니다.` | “삼명이 …” | “세 명이 …” |
-| `5km를 이동했습니다.` | 영어식 “파이브 …” | “오 킬로미터를 …” |
-| `오늘 5km를 이동했습니다.` | “오 케이엠 …” | 위치와 무관한 한국어 단위 발음 |
-| `24GB`, `3.5GHz`, `100MB/s` | span 분리/영어 routing | 한국어 단위 확장 후 처리 |
+### 6.2 Number & English Unit Analysis
 
-> 현재 한국어 normalizer는 로컬 CoreaSpeech의 N2gkPlus를 참조합니다. 다른 환경에서는 의존성을 설치하고 코드의 `COREASPEECH_ROOT`를 수정해야 합니다.
+`to_syl` 수정 후 일반적인 한국어 발음은 크게 개선되었지만 숫자·조수사·영문 단위가 포함된 문장에서 추가 오류가 나타났습니다.
 
-### 3.6 Checkpoint 로딩 개선
+| Input | Generated Pronunciation Problem |
+|---|---|
+| `3명이 회의에 참석했습니다.` | `삼 명이` |
+| `5km를 이동했습니다.` | `파이브 킬로미터` |
+| `오늘 5km를 이동했습니다.` | `오 케이엠` |
 
-[`trainer.py`](src/x_voice/model/trainer.py)는 pretrained/finetuning checkpoint를 구분하고, 일반 parameter는 shape이 같을 때만 전이하도록 정리했습니다. IPA vocabulary가 820에서 861로 확장될 때는 text embedding의 기존 row를 보존하고 새 row만 초기화합니다. 또한 최초 F5-TTS 전이에서만 `cond_fusion`을 제외하고 X-Voice continuation에서는 포함하며, resume 우선순위와 backward compatibility 처리를 명확히 했습니다.
+X-Voice의 Language Routing에서 한글은 Korean, Latin Alphabet은 English로 분류하지만 숫자는 **Neutral**로 처리됩니다. 따라서 같은 `5km`도 주변 Span에 따라 서로 다른 Language Context에 결합될 수 있음을 확인했습니다.
 
-## 4. 정량 결과
+이 문제를 통해 한국어 생성 성능에는 Acoustic Model뿐 아니라 **Text Normalization과 Language Routing** 역시 중요한 영향을 준다는 것을 확인했습니다.
 
-| 실험 | WER ↓ | SIM-o ↑ | 해석 |
-|---|---:|---:|---|
-| X-Voice 논문 | 2.42 | 0.723 | 참고 기준 |
-| 공개 600K checkpoint 재현 | 12.131 | 0.7197 | 한국어 전처리 문제 확인 |
-| `to_syl=True` 원인 분리 | 3.016 | — | 모델/추론 설정 고정, G2P만 변경 |
-| Multilingual replay fine-tuning | **2.988** | **0.7250** | 정확도·화자 유사도 동시 개선 |
+---
 
-```mermaid
-xychart-beta
-  title "Korean intra-lingual WER (lower is better)"
-  x-axis [Paper, Base-600K, SylFix, Replay-FT]
-  y-axis "WER (%)" 0 --> 13
-  bar [2.42, 12.131, 3.016, 2.988]
-```
+## 7. Evaluation
 
-`12.131 → 3.016`은 음절 보정 단독 효과이고 `2.988 / 0.7250`은 별도 fine-tuning 결과입니다. 두 조건을 하나의 연속 학습 결과로 해석하면 안 됩니다.
+X-Voice Multilingual Benchmark를 이용하여 **Intra-lingual / Cross-lingual** 조건에서 Base 600K와 최종 **Replay + SylFix 15.5K** 모델을 비교했습니다.
 
-## 5. 코드 변경 지도
+평가 지표는 다음과 같습니다.
 
-| 개선 영역 | 관련 코드 | 역할 |
-|---|---|---|
-| 음절 보존 | [`ipa_v6_tokenizer.py`](src/x_voice/train/datasets/ipa_v6_tokenizer.py) | `g2pK(to_syl=True)` |
-| 한국어 TN | [`korean_tn.py`](src/x_voice/infer/korean_tn.py) | 조수사·숫자·영문 단위 verbalization |
-| mixed-text routing | [`utils_infer_improved.py`](src/x_voice/infer/utils_infer_improved.py) | dominant script, numeric+Latin span 보호 |
-| inference 비교 | [`infer_cli_stage1_original.py`](src/x_voice/infer/infer_cli_stage1_original.py), [`infer_cli_stage1_improved.py`](src/x_voice/infer/infer_cli_stage1_improved.py) | baseline/improved 진입점 |
-| 평가 TN | [`text_normalizer_improved.py`](src/x_voice/eval/text_normalizer_improved.py) | WER 전 한국어 정규화 |
-| WER/SIM-o | [`run_wer.py`](src/x_voice/eval/utils/run_wer.py), [`eval_similarity.py`](src/x_voice/eval/eval_similarity.py) | 발음 정확도·화자 유사도 |
-| checkpoint 전이 | [`trainer.py`](src/x_voice/model/trainer.py) | vocab 확장 시 embedding 부분 로드 |
-| 실험 설정 | [`src/x_voice/configs`](src/x_voice/configs) | Replay, SylFix, KO–EN CS |
+- **WER ↓**: 발음 및 내용 정확도
+- **SIM-o ↑**: Reference와 Generated Speech 사이의 Speaker Similarity
 
-## 6. 설치·실행
+### 7.1 Intra-lingual Results
 
-Python 3.10+, FFmpeg, eSpeak-ng와 환경에 맞는 PyTorch가 필요합니다.
+30개 언어에 대해 동일 언어 Reference → 동일 언어 Target 조건으로 평가했습니다.
 
-```bash
-conda create -n x-voice python=3.11
-conda activate x-voice
-conda install ffmpeg
-pip install -e .
-espeak-ng --version
-```
+<p align="center">
+  <img src="intra-lingual%20result.png" width="800" alt="Intra-lingual Evaluation Results" />
+</p>
 
-eSpeak-ng가 없다면 `bash src/x_voice/prepare_ipa.sh`를 먼저 실행합니다.
+주요 결과는 다음과 같습니다.
 
-```bash
-# baseline
-python -m x_voice.infer.infer_cli_stage1_original \
-  -c src/x_voice/infer/examples/basic/basic_stage1.toml
+- **Korean WER:** `2.979 → 2.680`
+- **Korean SIM-o:** `0.7215 → 0.7265`
+- **English WER:** `2.381 → 2.152`
+- **English SIM-o:** `0.5852 → 0.5939`
 
-# improved
-python -m x_voice.infer.infer_cli_stage1_improved \
-  -c src/x_voice/infer/examples/basic/basic_stage1.toml
-```
+한국어뿐 아니라 다수 언어에서 Base 600K 대비 WER 또는 SIM-o가 개선되어, 한국어 Adaptation 과정에서도 기존 Multilingual 능력이 상당 부분 유지되었음을 확인했습니다.
 
-상세 inference 옵션은 [`src/x_voice/infer/README.md`](src/x_voice/infer/README.md)를 참고하세요. 학습·평가 전 config/shell script의 dataset, checkpoint, vocoder, output, GPU 경로를 환경에 맞게 수정해야 합니다.
+### 7.2 Cross-lingual Results
 
-## 7. 저장소 구조
+한국어와 영어 사이의 Cross-lingual Voice Cloning 성능을 비교했습니다.
 
-```text
-src/x_voice/
-├── configs/                 # Replay, SylFix, KO–EN CS 학습 설정
-├── train/datasets/          # IPA tokenizer
-├── infer/
-│   ├── korean_tn.py         # 한국어 숫자·단위 TN
-│   ├── *_original.py        # baseline 보존본
-│   └── *_improved.py        # 한국어 개선본
-└── eval/                    # WER, SIM-o, DNSMOS 평가
-```
+<p align="center">
+  <img src="cross-lingual%20result.png" width="800" alt="Cross-lingual Evaluation Results" />
+</p>
 
-## 8. 한계와 후속 연구
+| Language Pair | Base WER ↓ | Ours WER ↓ | Base SIM-o ↑ | Ours SIM-o ↑ |
+|---|---:|---:|---:|---:|
+| KO→EN | **2.921** | 3.360 | **0.4497** | 0.4488 |
+| EN→KO | 4.464 | **3.278** | 0.4727 | **0.4781** |
 
-- N2gkPlus/CorreaSpeech의 로컬 절대 경로를 configuration 또는 패키지 의존성으로 바꿔야 합니다.
-- 단위 사전을 날짜·통화·분수·주소 등으로 확장해야 합니다.
-- MOS, FFE와 code-switching 전용 test set을 추가해야 합니다.
-- 249 h 한영 혼합 실험은 더 큰 독립 test set에서 일반화 검증이 필요합니다.
-- ASR/normalizer 버전에 따라 WER가 달라질 수 있습니다.
+**EN→KO**에서는 발음 정확도와 Speaker Similarity가 모두 향상된 반면, **KO→EN**에서는 일부 성능 Trade-off가 나타났습니다.
 
-## 9. Upstream, 인용 및 라이선스
+---
 
-- Code: <https://github.com/sunnyxrxrx/X-Voice>
-- Paper: <https://arxiv.org/abs/2605.05611>
-- Model: <https://huggingface.co/XRXRX/X-Voice>
-- Benchmark: <https://huggingface.co/datasets/XRXRX/X-Voice-Testset>
+## 8. Conclusion
+
+본 연구에서는 [X-Voice](https://github.com/sunnyxrxrx/X-Voice)를 기반으로 한국어 Zero-shot Cross-lingual Voice Cloning 성능을 개선하기 위해 **Dataset → Fine-tuning → Evaluation → Text Frontend**를 단계적으로 분석했습니다.
+
+- 한국어 음성 데이터셋 **11종의 Script 구조 및 특성 조사**
+- AI Hub 다화자 음성합성 데이터 기반 Korean Fine-tuning
+- Korean-only Fine-tuning에서 **Catastrophic Forgetting** 확인
+- **Multilingual Data Replay**를 통한 기존 다국어 성능 보존
+- `g2pK to_syl=False`에서 발생하는 비정상 IPA 문제 발견
+- `to_syl=True` 적용 시 한국어 WER **12.131 → 3.016**
+- 숫자·조수사·영문 단위 오류를 **Text Normalization / Language Routing** 관점에서 분석
+- 최종 모델에서 KO→KO WER **2.979 → 2.680**, SIM-o **0.7215 → 0.7265**
+- EN→KO Cross-lingual WER **4.464 → 3.278**, SIM-o **0.4727 → 0.4781**
+
+### Future Work
+
+- KO→EN Cross-lingual 성능 저하 원인 분석
+- 숫자·단위·외래어를 고려한 Korean Text Normalization 고도화
+- AI Hub 숫자 패턴 / 외래어 / 한영 혼합 데이터의 추가 활용
+- 한·영 Code-switching 전용 Test Set 구축 및 일반화 성능 평가
+- WER / SIM-o뿐 아니라 MOS 및 Prosody 관련 지표를 이용한 다각도 평가
+
+---
+
+## References
+
+- [X-Voice: Official Repository](https://github.com/sunnyxrxrx/X-Voice)
+- [X-Voice Paper](https://arxiv.org/abs/2605.05611)
+- [X-Voice Model](https://huggingface.co/XRXRX/X-Voice)
+- [X-Voice Benchmark](https://huggingface.co/datasets/XRXRX/X-Voice-Testset)
 
 ```bibtex
 @article{xu2026xvoiceenablingspeak30,
@@ -271,5 +317,3 @@ src/x_voice/
   year={2026}
 }
 ```
-
-원본 X-Voice 코드는 MIT, pretrained model은 원 학습 데이터 조건에 따라 CC-BY-NC입니다. AI Hub 원천 데이터는 제공기관 이용정책을 따라야 합니다.

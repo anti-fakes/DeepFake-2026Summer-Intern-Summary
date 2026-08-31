@@ -86,10 +86,6 @@ X-Voice는 약 **420K hours**의 다국어 음성으로 학습된 약 **0.4B** �
 
 본 연구에서는 한국어 데이터를 직접 추가 학습하고 성능 변화를 분석하기 위해 **Stage 1을 기준으로 실험**했습니다.
 
-<p align="center">
-  <img src="xvoice_stage1.png" width="950" alt="X-Voice Stage 1" />
-</p>
-
 ### 2.2 Baseline Inference
 
 공개 Stage 1 600K Checkpoint를 한국어·영어·중국어에 적용하여 Baseline Inference를 수행했습니다.

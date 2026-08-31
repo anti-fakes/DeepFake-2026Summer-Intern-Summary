@@ -379,7 +379,7 @@ X-Voice의 Language Routing에서 한글은 Korean, Latin Alphabet은 English로
 
 ## 7. Inference
 
-Stage 1 inference는 [`basic_stage1.toml`](src/x_voice/infer/examples/basic/basic_stage1.toml)을 읽어 실행합니다. Base 600K와 Ours 15.5k를 비교할 때는 **동일한 Reference Audio, Reference Transcript, Target Text, Inference Setting을 사용하고 `ckpt_file`과 `vocab_file`만 변경**합니다.
+Stage 1 inference는 [`basic_stage1.toml`](src/x_voice/infer/examples/basic/basic_stage1.toml)을 읽어 실행합니다. 기존 Base inference 설정에서 `ckpt_file`을 Ours 15.5k Checkpoint 경로로 바꾸고, 함께 제공된 Ours `vocab.txt` 경로를 지정한 뒤 동일한 명령을 실행합니다.
 
 ### 7.1 TOML에서 수정할 항목
 
@@ -436,73 +436,6 @@ TOML을 저장한 뒤 다음 명령을 실행합니다.
 python -m x_voice.infer.infer_cli_stage1_improved \
   -c src/x_voice/infer/examples/basic/basic_stage1.toml
 ```
-
-### 7.2 동일한 Inference 명령으로 Base/Ours 비교
-
-Base와 Ours에 별도의 Inference 명령이 있는 것이 아닙니다. 두 모델 모두 동일한 `infer_cli_stage1_improved`를 사용하며, 비교 시 `--ckpt_file`과 `--vocab_file`만 변경합니다. 아래 블록은 같은 명령과 같은 입력·Sampling Setting으로 두 Checkpoint를 차례로 실행합니다. Checkpoint를 다른 위치에 저장했다면 상단의 네 경로만 수정한 뒤 전체를 그대로 실행합니다.
-
-```bash
-set -euo pipefail
-
-CONFIG="src/x_voice/infer/examples/basic/basic_stage1.toml"
-BASE_CKPT="ckpts/hf/XVoice_Base_Stage1/model_600000.safetensors"
-BASE_VOCAB="src/x_voice/infer/examples/vocab.txt"
-OURS_CKPT="ckpts/XVoice_KO_Replay_1100h_SylFix_v2/model_15500.pt"
-OURS_VOCAB="ckpts/XVoice_KO_Replay_1100h_SylFix_v2/vocab.txt"
-REF_AUDIO="reference_audio_ko.wav"
-REF_TEXT="저는 지금 음성 생성 모델을 테스트하고 있습니다. 제 목소리가 얼마나 자연스럽게 생성되는지 확인해보겠습니다."
-OUTPUT_DIR="inference_outputs"
-
-TEXTS=(
-  "퇴근길에 마트에 들러 우유와 과일을 사고 집으로 돌아왔습니다."
-  "3명이 회의에 참석했습니다."
-  "오늘 5km를 이동했습니다."
-)
-
-mkdir -p "$OUTPUT_DIR"
-
-for required_file in "$BASE_CKPT" "$BASE_VOCAB" "$OURS_CKPT" "$OURS_VOCAB" "$REF_AUDIO"; do
-  if [[ ! -f "$required_file" ]]; then
-    echo "Missing required file: $required_file" >&2
-    exit 1
-  fi
-done
-
-for i in "${!TEXTS[@]}"; do
-  number=$((i + 1))
-
-  python -m x_voice.infer.infer_cli_stage1_improved \
-    -c "$CONFIG" \
-    --ckpt_file "$BASE_CKPT" \
-    --vocab_file "$BASE_VOCAB" \
-    --ref_audio "$REF_AUDIO" \
-    --ref_text "$REF_TEXT" \
-    --gen_text "${TEXTS[$i]}" \
-    --ref_lang ko \
-    --gen_lang ko \
-    --normalize_text \
-    --output_dir "$OUTPUT_DIR" \
-    --output_file "base_result${number}.wav"
-
-  python -m x_voice.infer.infer_cli_stage1_improved \
-    -c "$CONFIG" \
-    --ckpt_file "$OURS_CKPT" \
-    --vocab_file "$OURS_VOCAB" \
-    --ref_audio "$REF_AUDIO" \
-    --ref_text "$REF_TEXT" \
-    --gen_text "${TEXTS[$i]}" \
-    --ref_lang ko \
-    --gen_lang ko \
-    --normalize_text \
-    --output_dir "$OUTPUT_DIR" \
-    --output_file "result${number}.wav"
-done
-```
-
-- Base output: `inference_outputs/base_result1.wav`–`base_result3.wav`
-- Ours output: `inference_outputs/result1.wav`–`result3.wav`
-- Base `model_600000.safetensors`는 별도로 준비해야 합니다. Ours `model_15500.pt`는 [Notion Checkpoint 페이지](https://app.notion.com/p/ckpt-3cd4e0f5f31480be9d75fbd37a09dcbc?source=copy_link)에서 다운로드합니다.
-- Local Vocos를 사용할 경우 `my_vocoder/vocos-mel-24khz`에 Vocos weight가 있어야 합니다.
 
 ---
 ## 8. Evaluation

@@ -1,6 +1,6 @@
 # DeepFake-2026Summer-Intern-Summary (LEE Minseo)
 
-> **2026 하계 연구연수 최종 정리**
+> **2026 하계 연구연수**
 > **Research Period:** 2026.07.01 – 2026.08.31
 
 본 연구는 [X-Voice](https://github.com/sunnyxrxrx/X-Voice)를 기반으로 진행하였으며, **한국어 Zero-shot Cross-lingual Voice Cloning 성능 향상**을 목표로 합니다.

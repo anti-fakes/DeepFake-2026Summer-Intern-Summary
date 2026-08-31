@@ -321,15 +321,25 @@ Fine-tuning 결과를 평가하는 과정에서 공개 Stage 1 600K Checkpoint�
 - `to_syl=True` → 완성형 한글 음절 유지
 - `to_syl=False` → Hangul Jamo 단위로 분해
 
+해당 옵션은 다음 Tokenizer 코드에서 설정됩니다.
+
+- 코드 경로: [`src/x_voice/train/datasets/ipa_v6_tokenizer.py`](src/x_voice/train/datasets/ipa_v6_tokenizer.py)
+- 적용 위치: `PhonemizeTextTokenizer.__init__()`의 한국어 `G2pk` 초기화 부분
+
+```python
+if language == "ko":
+    self.g2p = G2pk(no_space=False, to_syl=True)
+```
+
 공개 X-Voice 코드에서는 `to_syl=False`가 사용되고 있었으며, 분해된 Jamo가 eSpeak로 전달되면서 **비정상적인 IPA Sequence**가 생성되는 것을 확인했습니다.
 
 Model Weight와 Inference Setting을 고정하고 `to_syl`만 `True`로 변경한 결과,
 
-| Model / Setting | WER ↓ | SIM-o ↑ |
-|---|---:|---:|
-| Paper X-Voice Stage 1 | 2.42 | 0.723 |
-| Base 600K (Reproduced) | 12.131 | 0.7197 |
-| `to_syl=True` | **3.016** | - |
+| Model / Setting | WER ↓ |
+|---|---:|
+| Paper X-Voice Stage 1 | 2.42 |
+| Base 600K (Reproduced) | 12.131 |
+| `to_syl=True` | **3.016** |
 
 즉, 높은 한국어 WER의 주요 원인 중 하나가 Acoustic Model 자체가 아니라 **Korean Frontend의 Phonetic Representation**임을 확인했습니다.
 

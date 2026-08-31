@@ -357,6 +357,24 @@ X-Voice의 Language Routing에서 한글은 Korean, Latin Alphabet은 English로
 
 이 문제를 통해 한국어 생성 성능에는 Acoustic Model뿐 아니라 **Text Normalization과 Language Routing** 역시 중요한 영향을 준다는 것을 확인했습니다.
 
+### 6.3 Modified Code
+
+본 연구에서 분석 및 개선한 내용은 다음 코드에 반영되어 있습니다. `*_original.py`는 공개 구현을 기준으로 보존한 파일이며, `*_improved.py`는 한국어 처리 개선을 적용한 비교용 구현입니다.
+
+| Improvement | Code Path | Description |
+|---|---|---|
+| Korean Syllable Preservation | [`src/x_voice/train/datasets/ipa_v6_tokenizer.py`](src/x_voice/train/datasets/ipa_v6_tokenizer.py) | `G2pk(no_space=False, to_syl=True)`를 적용하여 Hangul Jamo 분해로 인한 비정상 IPA 변환 방지 |
+| Korean Text Normalization | [`src/x_voice/infer/korean_tn.py`](src/x_voice/infer/korean_tn.py) | N2gkPlus 기반 숫자·조수사 처리와 `km`, `GB`, `GHz`, `MB/s` 등의 숫자+영문 단위 확장 |
+| Number & Unit Language Routing | [`src/x_voice/infer/utils_infer_improved.py`](src/x_voice/infer/utils_infer_improved.py) | 숫자+Latin 표현을 하나의 Span으로 보호하고 문장의 Dominant Script에 따라 언어를 할당 |
+| Original / Improved Inference | [`infer_cli_stage1_original.py`](src/x_voice/infer/infer_cli_stage1_original.py), [`infer_cli_stage1_improved.py`](src/x_voice/infer/infer_cli_stage1_improved.py) | 동일 조건에서 공개 구현과 개선 구현을 각각 실행하기 위한 Stage 1 CLI |
+| Original / Improved Inference Utilities | [`utils_infer_original.py`](src/x_voice/infer/utils_infer_original.py), [`utils_infer_improved.py`](src/x_voice/infer/utils_infer_improved.py) | Text Normalization, Language Routing, IPA Tokenization 전후 비교 |
+| Korean Evaluation Normalization | [`src/x_voice/eval/text_normalizer_improved.py`](src/x_voice/eval/text_normalizer_improved.py) | WER 평가 전 한국어 문장에 N2gkPlus Normalization 적용 |
+| Batch Inference Evaluation | [`eval_infer_batch_original.py`](src/x_voice/eval/eval_infer_batch_original.py), [`eval_infer_batch_improved.py`](src/x_voice/eval/eval_infer_batch_improved.py) | Base 600K와 Ours 15.5k의 Benchmark 음성을 동일 조건으로 생성 |
+| WER Evaluation | [`src/x_voice/eval/utils/run_wer.py`](src/x_voice/eval/utils/run_wer.py) | ASR Transcript 생성, 언어별 Text Normalization 및 WER 계산 |
+| Speaker Similarity Evaluation | [`src/x_voice/eval/eval_similarity.py`](src/x_voice/eval/eval_similarity.py), [`ecapa_tdnn.py`](src/x_voice/eval/ecapa_tdnn.py) | ECAPA-TDNN Speaker Embedding 기반 Reference–Generated Speech 유사도 계산 |
+| Checkpoint Loading | [`src/x_voice/model/trainer.py`](src/x_voice/model/trainer.py) | Vocabulary 확장 시 기존 Text Embedding을 보존하여 부분 로드하고 Fine-tuning Checkpoint Resume 처리 개선 |
+| Training Configurations | [`XVoice_KO_Replay_Stage1.yaml`](src/x_voice/configs/XVoice_KO_Replay_Stage1.yaml), [`XVoice_KO_Replay_SylFix_Stage1.yaml`](src/x_voice/configs/XVoice_KO_Replay_SylFix_Stage1.yaml), [`XVoice_KOEN_CS_249h_Stage1.yaml`](src/x_voice/configs/XVoice_KOEN_CS_249h_Stage1.yaml) | Multilingual Replay, Syllable Fix, Korean–English Code-switching 실험 설정 |
+
 ---
 
 ## 7. Evaluation

@@ -361,7 +361,7 @@ X-Voice의 Language Routing에서 한글은 Korean, Latin Alphabet은 English로
 
 ## 7. Evaluation
 
-X-Voice Multilingual Benchmark를 이용하여 **Intra-lingual / Cross-lingual** 조건에서 Base 600K와 최종 **Replay + SylFix 15.5K** 모델을 비교했습니다.
+X-Voice Multilingual Benchmark를 이용하여 **Intra-lingual / Cross-lingual** 조건에서 Base 600K와 최종 **Ours 15.5k** 모델을 비교했습니다.
 
 평가 지표는 다음과 같습니다.
 

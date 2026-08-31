@@ -15,15 +15,15 @@ from tqdm import tqdm
 from x_voice.eval.ecapa_tdnn import ECAPA_TDNN_SMALL
 from x_voice.model.modules import MelSpec
 from x_voice.model.utils import convert_char_to_pinyin, str_to_list_ipa_all
-from x_voice.eval.text_normalizer import TextNormalizer
-from x_voice.infer.utils_infer import denoise_ref_audio
+from x_voice.eval.text_normalizer_improved import TextNormalizer
+from x_voice.infer.utils_infer_original import denoise_ref_audio
 import pickle
 from rate_pred.model.utils import count_syllables
 
 
 def get_testset_metainfo(data_dir, in_language, ref_language=None, drop_text=False, use_truth_duration=False):
     """
-    data_dir goes to: cv3_eval/zero_shot/[in_language] 
+    data_dir goes to: cv3_eval/zero_shot/[in_language]
     metainfo: List[Tuple(utt_id, prompt_wav_path, prompt_text, target_text)]
     """
     path_parts = data_dir.split("/")
@@ -35,16 +35,16 @@ def get_testset_metainfo(data_dir, in_language, ref_language=None, drop_text=Fal
         else:
             prompt_scp = os.path.join(data_dir, "prompt_wav.scp")
         prompt_text_file = None
-    else:       
+    else:
         if ref_language:
             prompt_scp = os.path.join(root_dir, "zero_shot", ref_language, "prompt_wav.scp")
-            prompt_text_file = os.path.join(root_dir, "zero_shot", ref_language, "prompt_text") 
+            prompt_text_file = os.path.join(root_dir, "zero_shot", ref_language, "prompt_text")
         else:
             prompt_scp = os.path.join(data_dir, "prompt_wav.scp")
-            prompt_text_file = os.path.join(data_dir, "prompt_text") 
+            prompt_text_file = os.path.join(data_dir, "prompt_text")
 
 
-    target_text_file = os.path.join(data_dir, "text")     
+    target_text_file = os.path.join(data_dir, "text")
 
     utt2wav = {}
     with open(prompt_scp, 'r', encoding='utf-8') as f:
@@ -53,7 +53,7 @@ def get_testset_metainfo(data_dir, in_language, ref_language=None, drop_text=Fal
             if len(parts) >= 2:
                 utt2wav[parts[0]] = parts[1]
                 #print(parts[1])
-    
+
     # load target text
     utt2text = {}
     with open(target_text_file, 'r', encoding='utf-8') as f:
@@ -61,7 +61,7 @@ def get_testset_metainfo(data_dir, in_language, ref_language=None, drop_text=Fal
             parts = line.strip().split(maxsplit=1)
             if len(parts) >= 2:
                 utt2text[parts[0]] = parts[1]
-                
+
     # load prompt text
     utt2prompt = {}
     if not drop_text:
@@ -70,21 +70,21 @@ def get_testset_metainfo(data_dir, in_language, ref_language=None, drop_text=Fal
                 parts = line.strip().split(maxsplit=1)
                 if len(parts) >= 2:
                     utt2prompt[parts[0]] = parts[1]
-    
+
     metainfo = []
     for utt_id, wav_path in utt2wav.items():
         if utt_id in utt2text:
             target_text = utt2text[utt_id]
-            prompt_text = utt2prompt.get(utt_id, None) 
-            wav_path_clean = wav_path.replace("data/", "", 1)  
+            prompt_text = utt2prompt.get(utt_id, None)
+            wav_path_clean = wav_path.replace("data/", "", 1)
             full_wav_path = os.path.join(root_dir, wav_path_clean)
             if use_truth_duration:
                 cur_id = utt_id.split("_")[-1]
-                gt_wav = os.path.join(data_dir, f"ground_truth/gt_{cur_id}.wav")  
+                gt_wav = os.path.join(data_dir, f"ground_truth/gt_{cur_id}.wav")
                 metainfo.append((utt_id, prompt_text, full_wav_path, target_text, gt_wav))
             else:
                 metainfo.append((utt_id, prompt_text, full_wav_path, target_text))
-            
+
     return metainfo
 
 # seedtts testset metainfo: utt, prompt_text, prompt_wav, gt_text, gt_wav
@@ -206,7 +206,7 @@ def get_inference_prompt(
             ref_audio, ref_sr = torchaudio.load(prompt_wav)
             if denoise_ref_wav:
                 ref_audio, ref_sr = denoise_ref_audio(ref_audio, ref_sr)
-            
+
             ref_rms = torch.sqrt(torch.mean(torch.square(ref_audio)))
             if ref_rms < target_rms:
                 ref_audio = ref_audio * target_rms / ref_rms
@@ -216,7 +216,7 @@ def get_inference_prompt(
                 ref_audio = resampler(ref_audio)
 
             # Text
-            
+
             if normalize_text:
                 # print(gt_text)
                 if ref_language and not drop_text:
@@ -231,15 +231,15 @@ def get_inference_prompt(
                 if not gt_text.endswith((".","。","?","？","!","！","...")):
                     gt_text += "."
                 # print(f"{gt_text}\n")
-            ref_text_tokenized, gen_text_tokenized = None, None         
+            ref_text_tokenized, gen_text_tokenized = None, None
             if ref_language: # Cross-lingual
                 assert tokenizer.startswith("ipa") and ref_ipa_tokenizer and language and ipa_tokenizer, "Cross-lingual needs ipa tokenizer."
-                gen_text_str = ipa_tokenizer(gt_text) 
+                gen_text_str = ipa_tokenizer(gt_text)
                 gen_text_tokenized = str_to_list_ipa_all(gen_text_str, tokenizer, ref_language)
                 if not drop_text:
                     ref_text_str = ref_ipa_tokenizer(prompt_text)
                     ref_text_tokenized = str_to_list_ipa_all(ref_text_str, tokenizer, language)
-                
+
             else:
                 if tokenizer == "pinyin":
                     if not drop_text:
@@ -255,14 +255,14 @@ def get_inference_prompt(
                     if not drop_text:
                         ref_text_tokenized = list(prompt_text)
                     gen_text_tokenized = list(gt_text)
-                    
+
             if not drop_text and len(ref_text_tokenized[-1].encode("utf-8")) == 1 and not reverse:
                 ref_text_tokenized.append(" ")
             elif len(gen_text_tokenized[-1].encode("utf-8")) == 1 and reverse:
                 gen_text_tokenized.append(" ")
             if random.random() < 0.001:
                 print(f"==========\nprompt text tokenized: {ref_text_tokenized}\ntarget text tokenized:{gen_text_tokenized}\n==========")
-            
+
             curr_ref_len = len(ref_text_tokenized) if not drop_text else 0
             curr_gen_len = len(gen_text_tokenized)
             if drop_text:
@@ -287,7 +287,7 @@ def get_inference_prompt(
                     resampler = torchaudio.transforms.Resample(gt_sr, target_sample_rate)
                     gt_audio = resampler(gt_audio)
                 total_mel_len = ref_mel_len + mel_spectrogram(gt_audio).shape[-1]
-                
+
                 # # test vocoder resynthesis
                 # ref_audio = gt_audio
             else:
@@ -305,7 +305,7 @@ def get_inference_prompt(
                     pred_duration = min(max(gt_num_unit / speed.item(), 2), 30)
                     gen_mel_len = int((pred_duration * target_sample_rate) / hop_length)
                     total_mel_len = ref_mel_len + gen_mel_len
-                    
+
                 elif sp_type == "syllable":
                     if ref_language:
                         ref_syllables = count_syllables(prompt_text, ref_language)
@@ -349,8 +349,8 @@ def get_inference_prompt(
                         ref_mel_lens[bucket_i],
                         total_mel_lens[bucket_i],
                         final_text_list[bucket_i],
-                        ref_text_lens[bucket_i], 
-                        gen_text_lens[bucket_i]  
+                        ref_text_lens[bucket_i],
+                        gen_text_lens[bucket_i]
                     )
                 )
                 batch_accum[bucket_i] = 0
@@ -361,12 +361,12 @@ def get_inference_prompt(
                     ref_mel_lens[bucket_i],
                     total_mel_lens[bucket_i],
                     final_text_list[bucket_i],
-                    ref_text_lens[bucket_i], 
+                    ref_text_lens[bucket_i],
                     gen_text_lens[bucket_i]
                 ) = [], [], [], [], [], [], [], []
         except Exception as e:
             print(f"[WARN] Failed to load {utt}: {e}")
-            continue  
+            continue
 
     # add residual
     for bucket_i, bucket_frames in enumerate(batch_accum):

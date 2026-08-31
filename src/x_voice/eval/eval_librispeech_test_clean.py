@@ -13,7 +13,7 @@ from importlib.resources import files
 
 import numpy as np
 
-from x_voice.eval.utils_eval import get_librispeech_test, run_asr_wer, run_sim
+from x_voice.eval.utils_eval_original import get_librispeech_test, run_asr_wer, run_sim
 
 
 rel_path = str(files("x_voice").joinpath("../../"))

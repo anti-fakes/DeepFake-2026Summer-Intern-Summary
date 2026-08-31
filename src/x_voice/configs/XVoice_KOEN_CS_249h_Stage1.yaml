@@ -1,0 +1,82 @@
+hydra:
+  run:
+    dir: /data/minseo/XVoice_runs/${model.name}_${datasets.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+datasets:
+  name: XVoice_KOEN_CS_249h
+  batch_size_per_gpu: 9600
+  batch_size_type: frame
+  max_samples: 16
+  num_workers: 16
+
+optim:
+  epochs: 1
+  learning_rate: 2.0e-6
+  num_warmup_updates: 200
+  grad_accumulation_steps: 2
+  max_grad_norm: 1.0
+  bnb_optimizer: False
+
+model:
+  name: XVoice_Base_Stage1
+  tokenizer: ipa_v6
+  tokenizer_path: null
+  backbone: DiT
+
+  lang_drop_prob: 0.1
+  cond_drop_prob: 0.1
+
+  arch:
+    dim: 1024
+    depth: 22
+    heads: 16
+    ff_mult: 2
+    text_dim: 512
+    text_mask_padding: True
+    conv_layers: 4
+    qk_norm: null
+    pe_attn_head: null
+    attn_backend: torch
+    attn_mask_enabled: False
+    checkpoint_activations: True
+
+    languages: ["bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hr", "hu", "id", "it", "ja", "ko", "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "th", "vi", "zh"]
+
+    text_infill_lang_type: ada
+    time_infill_lang_type: time_concat
+
+    use_swiglu: False
+    use_rmsnorm: False
+    use_ctc: False
+
+    lang_dim: 512
+    lang_dim_in_t: 512
+    drop_lang_in_time: False
+    share_lang_embed: True
+
+  mel_spec:
+    target_sample_rate: 24000
+    n_mel_channels: 100
+    hop_length: 256
+    win_length: 1024
+    n_fft: 1024
+    mel_spec_type: vocos
+
+  vocoder:
+    is_local: True
+    local_path: my_vocoder/vocos-mel-24khz
+
+ckpts:
+  logger: wandb
+  log_samples: False
+
+  save_per_updates: 250
+  keep_last_n_checkpoints: -1
+  last_per_updates: 500
+
+  save_dir: ckpts/XVoice_KOEN_CS_249h_v1
+
+  pretrained_path: ckpts/XVoice_KO_Replay_1100h_SylFix_v2/model_15500.pt
+
+  continue_training: true
+  freeze_update: null

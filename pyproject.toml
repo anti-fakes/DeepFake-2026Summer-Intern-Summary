@@ -94,7 +94,7 @@ ipa_v4 = [
 Homepage = "https://github.com/sunnyxrxrx/X-Voice"
 
 [project.scripts]
-"x-voice_infer-cli-stage1" = "x_voice.infer.infer_cli_stage1:main"
+"x-voice_infer-cli-stage1" = "x_voice.infer.infer_cli_stage1_original:main"
 "x-voice_infer-cli-stage2" = "x_voice.infer.infer_cli_stage2:main"
 "x-voice_infer-gradio" = "x_voice.infer.infer_gradio:main"
 

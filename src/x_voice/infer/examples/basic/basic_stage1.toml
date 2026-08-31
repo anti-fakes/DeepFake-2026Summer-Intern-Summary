@@ -6,9 +6,9 @@ model_cfg = "src/x_voice/configs/XVoice_Base_Stage1.yaml"
 ckpt_file = "ckpts/stage1_model_600000.safetensors"
 vocab_file = "src/x_voice/infer/examples/vocab.txt"
 
-ref_audio = "infer/examples/basic/basic_ref_en.wav"
-ref_text = "Some call me nature, others call me mother nature."
-gen_text = "I don't really care what you call me. I've been a silent spectator, watching species evolve, empires rise and fall. But always remember, I am mighty and enduring."
+ref_audio = "infer/examples/basic/newtest2.wav" # "infer/examples/basic/basic_ref_en.wav"
+ref_text = "평소에는 지하철을 타고 다니는데 오늘은 늦어서 택시를 타고 왔어." # "Some call me nature, others call me mother nature."
+gen_text = "평소에는 버스를 타고 다니는데 오늘은 늦어서 택시를 타고 왔어." # "I don't really care what you call me. I've been a silent spectator, watching species evolve, empires rise and fall. But always remember, I am mighty and enduring."
 gen_file = ""
 
 ref_lang = ""

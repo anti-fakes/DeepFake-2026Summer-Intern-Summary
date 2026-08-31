@@ -19,6 +19,16 @@ class TextNormalizer:
             elif self.language == "bg":
                 from bg_text_normalizer import BulgarianTextNormalizer
                 return BulgarianTextNormalizer()
+
+            elif self.language == "ko":
+                import sys
+
+                coreaspeech_src = "/home/user/CoreaSpeech/src"
+                if coreaspeech_src not in sys.path:
+                    sys.path.insert(0, coreaspeech_src)
+
+                from module.data_conditioning.normalization import N2gkPlus
+                return N2gkPlus(natural=True)
             else:
                 return nemo_normalizer(input_case='cased', lang=self.language)
         except Exception as e:
@@ -33,7 +43,7 @@ class TextNormalizer:
         text = text.replace('!,', '!').replace('!.', '!')
         text = text.replace('?,', '?').replace('?.', '?')
         text = text.replace('-', ' ')
-        quote_pattern = r'[„“»«”]' 
+        quote_pattern = r'[„“»«”]'
         text= re.sub(quote_pattern, '"', text)
         text = text.replace('#', '').replace('*',' ') # German text may use * between words; convert it to a space.
         text = re.sub(r'\s+([.,!?;:])', r'\1', text) # Remove spaces before punctuation.
@@ -42,7 +52,7 @@ class TextNormalizer:
         if text:
             text = text[0].upper() + text[1:]
         return text
-    
+
     def _replace_num(self, match):
         number = match.group()
         try:
@@ -59,9 +69,9 @@ class TextNormalizer:
     def normalize(self, text: str) -> str:
         if not isinstance(text, str) or len(text.strip()) == 0:
             print("Text is not a string, please check.")
-            return ""  
+            return ""
         text_clean = self.clean_text_for_tts(text)
-        
+
         if self.language == "pt":
             try:
                 from xphonebr import normalizer as pt_processor
@@ -76,6 +86,8 @@ class TextNormalizer:
             except Exception as e:
                 print(e)
                 text_normalized = text_clean
+        elif self.processor and self.language == "ko":
+            text_normalized = self.processor(text_clean)
         elif self.processor and self.language in ["zh", "bg"]:
             text_normalized = self.processor.normalize(text_clean)
         elif self.processor:
@@ -83,14 +95,14 @@ class TextNormalizer:
         else:
             text_normalized = re.sub(r'\d+(\.\d+)?', self._replace_num, text_clean)
 
-            
+
         return text_normalized
 
 
 
 if __name__ == "__main__":
-    
-    normalizer = TextNormalizer(language="zh")    
+
+    normalizer = TextNormalizer(language="zh")
     test_cases = [
         "7 12 57 0 5 40"
     ]
@@ -99,5 +111,5 @@ if __name__ == "__main__":
         print(f"Original text: {test_text}")
         normalized_text = normalizer.normalize(test_text)
         print(f"Normalized text: {normalized_text}\n")
-        
-# python src/x_voice/eval/text_normalizer.py
+
+# python src/x_voice/eval/text_normalizer_improved.py

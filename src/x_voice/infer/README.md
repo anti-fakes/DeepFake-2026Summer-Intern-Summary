@@ -2,7 +2,7 @@
 
 This folder contains three inference entry points:
 
-- `infer_cli_stage1.py`: X-Voice Stage1 zero-shot voice cloning. Requires reference audio and reference text.
+- `infer_cli_stage1_original.py`: X-Voice Stage1 zero-shot voice cloning. Requires reference audio and reference text.
 - `infer_cli_stage2.py`: X-Voice Stage2 drop-text voice cloning. Requires reference audio, does not need reference text, and uses SRP to predict duration.
 - `infer_gradio.py`: unified web demo for zero-shot cloning and translate-and-clone.
 
@@ -17,7 +17,7 @@ X-Voice Stage1 clones a reference voice with reference transcript conditioning.
 Run with the example TOML:
 
 ```bash
-python -m x_voice.infer.infer_cli_stage1 \
+python -m x_voice.infer.infer_cli_stage1_original \
   -c src/x_voice/infer/examples/basic/basic_stage1.toml
 ```
 
@@ -252,7 +252,7 @@ srp_ckpt_file = "ckpts/srp_model_80000.safetensors"
 You can also override paths directly:
 
 ```bash
-python -m x_voice.infer.infer_cli_stage1 \
+python -m x_voice.infer.infer_cli_stage1_original \
   -c src/x_voice/infer/examples/basic/basic_stage1.toml \
   --ckpt_file /path/to/model_600000.safetensors \
   --vocab_file /path/to/vocab.txt

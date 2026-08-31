@@ -86,8 +86,8 @@ SYMBOLS_MAPPING = {
 REPLACE_SYMBOL_REGEX = re.compile("|".join(re.escape(p) for p in SYMBOLS_MAPPING.keys()))
 IPA_NORMALIZATION_MAP = {
     # Normalize unstable symbols.
-    "eɪɛ": "eɪ|ɛ", "zeɪɛ": "z|eɪ|ɛ", "teɪɛ": "t|eɪ|ɛ", "əeɪ": "ə|eɪ", "aɪɛ": "aɪ|ɛ", "taɪ": "t|aɪ", 
-    "jap": "ja|p", "jud": "ju|d", "jaɛ": "ja|ɛ", "ʃja": "ʃ|ja", "jat": "ja|t", "ɑja": "ɑ|ja", "əlɹ": "əl|ɹ", "əlf": "əl|f", "oʊw": "oʊ|w", 
+    "eɪɛ": "eɪ|ɛ", "zeɪɛ": "z|eɪ|ɛ", "teɪɛ": "t|eɪ|ɛ", "əeɪ": "ə|eɪ", "aɪɛ": "aɪ|ɛ", "taɪ": "t|aɪ",
+    "jap": "ja|p", "jud": "ju|d", "jaɛ": "ja|ɛ", "ʃja": "ʃ|ja", "jat": "ja|t", "ɑja": "ɑ|ja", "əlɹ": "əl|ɹ", "əlf": "əl|f", "oʊw": "oʊ|w",
     "daʊ":"d|aʊ", "meɪ":"m|eɪ", "taʊ":"t|aʊ", "daɪ":"d|aɪ",
     "nɡ": "ŋ",        # Standalone nasal.
 }
@@ -107,27 +107,27 @@ def convert_char_to_pinyin(text_list, polyphone=True):
         text = REPLACE_SYMBOL_REGEX.sub(lambda x: SYMBOLS_MAPPING[x.group()], text)
         text = regex.sub(r"\p{C}|\p{Z}", " ", text)
         sentence_words = [] # Store processed words for the current sentence.
-        
+
         for seg in jieba.cut(text):
             # seg is one segmented token.
             if not seg.strip():
                 continue
-                
+
             seg_byte_len = len(bytes(seg, "UTF-8"))
             current_word_parts = [] # Store sub-parts inside the word (pinyin or characters).
-            
+
             # Case A: plain letters / numbers / symbols (English / numbers) -> split by character.
             # "Hello" -> ['H', 'e', 'l', 'l', 'o']
-            if seg_byte_len == len(seg): 
+            if seg_byte_len == len(seg):
                 current_word_parts.extend(list(seg))
-            
+
             # Case B: pure Chinese word -> convert to pinyin and keep syllables intact.
             # Example: a Chinese word becomes a list of pinyin syllables.
             elif polyphone and seg_byte_len == 3 * len(seg):
                 # style=Style.TONE3 produces tokens like "bei3".
                 seg_pinyin = lazy_pinyin(seg, style=Style.TONE3, tone_sandhi=True)
                 current_word_parts.extend(seg_pinyin)
-            
+
             # Case C: mixed text -> process character by character.
             # Example: mixed text is processed character by character.
             else:
@@ -140,11 +140,11 @@ def convert_char_to_pinyin(text_list, polyphone=True):
                         current_word_parts.append(p)
                     else:
                         current_word_parts.append(c)
-            
+
             # Join phonemes inside a word with "|".
             if current_word_parts:
                 sentence_words.append("|".join(current_word_parts))
-        
+
         # Join words with spaces.
         final_text_list.append(" ".join(sentence_words))
 
@@ -166,7 +166,7 @@ class PhonemizeTextTokenizer:
         symbol_map=SYMBOLS_MAPPING,
     ) -> None:
         if language == 'ko':
-            self.g2p = G2pk(no_space=False) 
+            self.g2p = G2pk(no_space=False, to_syl=True)
         else:
             self.g2p = None
         if backend == "espeak":
@@ -186,12 +186,12 @@ class PhonemizeTextTokenizer:
         self.backend = phonemizer
         self.separator = separator
         self.language = language
-        
+
         self.mapping = mapping_map
         sorted_keys = sorted(mapping_map.keys(), key=len, reverse=True)
         pattern_str = "|".join(map(re.escape, sorted_keys))
         self.pattern = re.compile(pattern_str)
-        
+
         self.symbol_mapping = symbol_map
         self.symbol_pattern = re.compile("|".join(re.escape(p) for p in symbol_map.keys()))
 
@@ -261,7 +261,7 @@ class PhonemizeTextTokenizer:
             cleaned_ipa = self.post_clean_ipa(res_ipa, mapping=True)
         # Korean: first convert text into pronunciation with g2pK.
         elif self.language == 'ko':
-            assert self.g2p is not None 
+            assert self.g2p is not None
             pronounced_hangul_list = self.g2p(input_text)
             pronounced_hangul = "".join(pronounced_hangul_list)
             phonemized = self.backend.phonemize([pronounced_hangul], separator=self.separator, strip=strip, njobs=1)
@@ -280,7 +280,7 @@ def tokenize_text(tokenizer: PhonemizeTextTokenizer, text: str) -> str:
 
 def get_ipa_id(in_language: str) -> str:
     LANG_MAP = {
-        "zh": "cmn", "en": "en-us", "fr": "fr-fr", 
+        "zh": "cmn", "en": "en-us", "fr": "fr-fr",
     }
     return LANG_MAP.get(in_language, in_language)
 
@@ -288,7 +288,7 @@ def run_test():
     TEST_CASES = [
         # Add ad-hoc multilingual examples here when debugging tokenizer behavior.
     ]
-    
+
     print(f"{'Lang':<5} | {'Original Text':<25}")
     print("-" * 80)
     for lang_code, text in TEST_CASES:
@@ -297,12 +297,12 @@ def run_test():
             tokenizer = PhonemizeTextTokenizer(language=espeak_code)
             ipa_string = tokenize_text(tokenizer, text)
             tokens = str_to_list_ipa_v6(ipa_string)
-            
+
             print(f"[{lang_code}] Input: {text}")
             print(f"     -> IPA String: {ipa_string}")
             print(f"     -> Token List: {tokens}")
             print("-" * 80)
-            
+
         except Exception as e:
             print(f"[{lang_code}] Error: {e}")
             import traceback

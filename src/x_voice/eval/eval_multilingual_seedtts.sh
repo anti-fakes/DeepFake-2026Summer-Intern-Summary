@@ -11,7 +11,7 @@ drop_text=True # set True for stage 2 model, False for stage 1 model
 seed=0
 nfe=16
 speed=1.0
-sp_type=pretrained # syllable, pretrained, if choose "pretrained", "srp_exp_name" and "srp_ckpt" must be provided 
+sp_type=pretrained # syllable, pretrained, if choose "pretrained", "srp_exp_name" and "srp_ckpt" must be provided
 srp_exp_name=SpeedPredict_Multilingual
 srp_ckpt=28000
 
@@ -54,7 +54,7 @@ else
     decode_dir="${PROJECT_ROOT}/results/${exp_name}_${ckpt}/${dataset}/${sp_type}_seed${seed}_euler_nfe${nfe}_vocos_ss-1_schedule${cfg_schedule}_cfg${cfg_strength}_speed${speed}zero_shot"
 fi
 
-accelerate launch --main_process_port 29507 --num_processes ${num_gpus} src/x_voice/eval/eval_infer_batch.py \
+accelerate launch --main_process_port 29507 --num_processes ${num_gpus} src/x_voice/eval/eval_infer_batch_original.py \
     -s ${seed} -n "${exp_name}" -c ${ckpt} -t "${dataset}" -nfe ${nfe} --speed ${speed} \
     -l "${test_set// /,}" -rl "${ref_set// /,}" \
     --cfg_strength ${cfg_strength} \

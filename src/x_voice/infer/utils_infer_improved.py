@@ -519,16 +519,16 @@ def remove_silence_for_generated_wav(filename):
 
 def remove_silence_for_generated_wav_numpy(wave_np, sample_rate, keep_silence=100):
     """
-    Remove silence from a numpy array representing audio wave directly, 
+    Remove silence from a numpy array representing audio wave directly,
     useful for chunk-level trimming before concatenation.
     """
     # Convert numpy array to AudioSegment
     # pydub requires audio to be in 16-bit integer format
     wave_np_int16 = np.int16(wave_np * 32767)
     aseg = AudioSegment(
-        wave_np_int16.tobytes(), 
+        wave_np_int16.tobytes(),
         frame_rate=sample_rate,
-        sample_width=2, 
+        sample_width=2,
         channels=1
     )
 
@@ -536,7 +536,7 @@ def remove_silence_for_generated_wav_numpy(wave_np, sample_rate, keep_silence=10
     non_silent_segs = silence.split_on_silence(
         aseg, min_silence_len=100, silence_thresh=-50, keep_silence=keep_silence, seek_step=10
     )
-    
+
     if not non_silent_segs:
         # If everything is stripped (rare), return original
         return wave_np
@@ -544,7 +544,7 @@ def remove_silence_for_generated_wav_numpy(wave_np, sample_rate, keep_silence=10
     non_silent_wave = AudioSegment.silent(duration=0)
     for non_silent_seg in non_silent_segs:
         non_silent_wave += non_silent_seg
-        
+
     # Convert back to float32 numpy array
     samples = np.array(non_silent_wave.get_array_of_samples())
     return samples.astype(np.float32) / 32767.0
@@ -690,7 +690,7 @@ def denoise_ref_audio(
     except Exception as e:
         print(f"[WARN] Failed to denoise ref wav, use original waveform. Detail: {e}")
         return ref_audio, ref_sr
-    
+
 def audio_post_processing(mel, threshold=2.8, limit=3.5, start_bin=60):
     mel_high = mel[:, :, start_bin:]
     def apply_limit(x, t, m):
@@ -758,77 +758,208 @@ def detect_segment_lang(text, fallback_lang):
         print(f"Warning: failed to detect language for text '{text}': {exc}")
         return fallback_lang
 
+def _get_dominant_script(text: str):
+    """
+    Estimate the dominant script of the whole utterance.
+    Digits, spaces, punctuation, and symbols are ignored.
+    """
+    cjk_pattern = r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3400-\u4DBF]'
+    ko_pattern = r'[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]'
+    th_pattern = r'[\u0E00-\u0E7F]'
+    latin_pattern = r'[A-Za-z]'
+
+    counts = {
+        "ko": len(re.findall(ko_pattern, text)),
+        "cjk": len(re.findall(cjk_pattern, text)),
+        "th": len(re.findall(th_pattern, text)),
+        "latin": len(re.findall(latin_pattern, text)),
+    }
+
+    dominant = max(counts, key=counts.get)
+
+    if counts[dominant] == 0:
+        return None
+
+    return dominant
+
+
+def _find_numeric_latin_expressions(text: str):
+    """
+    Detect compact numeric+Latin expressions such as:
+        5km
+        24GB
+        30km/h
+        3GHz
+        3.5GHz
+        100Mbps
+
+    This is structural detection, not a unit dictionary.
+    """
+    pattern = re.compile(
+        r'\d+(?:[.,]\d+)?'
+        r'[A-Za-z]+'
+        r'(?:/[A-Za-z]+)?'
+    )
+
+    return {
+        m.start(): (m.end(), m.group())
+        for m in pattern.finditer(text)
+    }
+
+
 def auto_split_mixed_text(text: str, fallback_lang: str) -> list[tuple[str, str]]:
     """
     Automatically splits mixed language text into segments.
-    Returns a list of tuples: [(lang, text), ...]
+
+    Compared with the original implementation, compact numeric+Latin
+    expressions are kept together and routed according to the dominant
+    script of the utterance.
+
+    Returns:
+        [(lang, text), ...]
     """
-    # Regex patterns for different script blocks
-    # Japanese kana & Chinese kanji (CJK)
+    # Japanese kana & Chinese kanji
     cjk_pattern = r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3400-\u4DBF\u3000-\u303F\uFF00-\uFFEF]'
+
     # Korean Hangul
     ko_pattern = r'[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]'
-    # Thai script
+
+    # Thai
     th_pattern = r'[\u0E00-\u0E7F]'
-    
+
+    dominant_script = _get_dominant_script(text)
+    protected = _find_numeric_latin_expressions(text)
+
     segments = []
     current_segment = ""
     current_type = None
 
-    for char in text:
+    def flush_current():
+        nonlocal current_segment, current_type
+
+        if current_segment:
+            segments.append(
+                (
+                    current_segment,
+                    current_type if current_type is not None else "neutral",
+                )
+            )
+
+        current_segment = ""
+        current_type = None
+
+    i = 0
+
+    while i < len(text):
+
+        # -------------------------------------------------------------
+        # Numeric + Latin expression
+        # -------------------------------------------------------------
+        if i in protected:
+            end, expression = protected[i]
+
+            flush_current()
+
+            # Route the complete expression according to the dominant
+            # script of the surrounding utterance.
+            if dominant_script == "ko":
+                expr_type = "ko"
+            elif dominant_script == "cjk":
+                expr_type = "cjk"
+            elif dominant_script == "th":
+                expr_type = "th"
+            else:
+                # Latin-dominant or unresolved utterance:
+                # leave it to the normal other-language LID path.
+                expr_type = "other_lang"
+
+            segments.append((expression, expr_type))
+
+            i = end
+            continue
+
+        char = text[i]
+
         if re.match(cjk_pattern, char):
-            char_type = 'cjk'
+            char_type = "cjk"
+
         elif re.match(ko_pattern, char):
-            char_type = 'ko'
+            char_type = "ko"
+
         elif re.match(th_pattern, char):
-            char_type = 'th'
-        # \w matches all Unicode word characters (letters from any language, plus digits and underscore).
-        # So \W matches everything else (spaces, punctuation, symbols).
+            char_type = "th"
+
+        # Digits, spaces, punctuation and symbols
         elif re.match(r'[\W\d_]', char):
-            char_type = 'neutral'
+            char_type = "neutral"
+
         else:
-            # Everything else (Latin, Cyrillic, Greek, Arabic, Devanagari, etc.)
-            char_type = 'other_lang'
+            # Latin, Cyrillic, Greek, Arabic, Devanagari, ...
+            char_type = "other_lang"
 
         if current_type is None:
-            if char_type != 'neutral':
+            if char_type != "neutral":
                 current_type = char_type
+
             current_segment += char
-        elif char_type == 'neutral':
+
+        elif char_type == "neutral":
             current_segment += char
+
         elif char_type == current_type:
             current_segment += char
+
         else:
-            segments.append((current_segment, current_type))
+            flush_current()
             current_segment = char
             current_type = char_type
 
-    if current_segment:
-        segments.append((current_segment, current_type if current_type else 'cjk'))
+        i += 1
 
+    flush_current()
+
+    # -------------------------------------------------------------
+    # Convert script segments -> language spans
+    # -------------------------------------------------------------
     result = []
+
     for seg_text, seg_type in segments:
+
         if not seg_text.strip():
-            # If it's just spaces or punctuation, append to the last segment if possible
             if result:
-                result[-1] = (result[-1][0], result[-1][1] + seg_text)
+                result[-1] = (
+                    result[-1][0],
+                    result[-1][1] + seg_text,
+                )
             else:
                 result.append((fallback_lang, seg_text))
+
             continue
-            
-        if seg_type == 'cjk':
-            lang = "zh" #detect_segment_lang(seg_text, "zh")
-        elif seg_type == 'ko':
-            lang = 'ko'
-        elif seg_type == 'th':
-            lang = 'th'
-        elif seg_type == 'other_lang':
-            lang = detect_segment_lang(seg_text, "en") # Default text to English, fallback to 'en'
+
+        if seg_type == "cjk":
+            lang = "zh"
+
+        elif seg_type == "ko":
+            lang = "ko"
+
+        elif seg_type == "th":
+            lang = "th"
+
+        elif seg_type == "other_lang":
+            lang = detect_segment_lang(seg_text, "en")
+
         else:
             lang = fallback_lang
-            
-        result.append((lang, seg_text))
-        
+
+        # Merge adjacent spans with the same final language.
+        if result and result[-1][0] == lang:
+            result[-1] = (
+                lang,
+                result[-1][1] + seg_text,
+            )
+        else:
+            result.append((lang, seg_text))
+
     return result
 
 
@@ -949,7 +1080,7 @@ def get_ipa_tokenizer_cache(tokenizer_name, with_stress):
 
 def normalize_text_for_lang(text, lang, normalizer_cache):
     try:
-        from x_voice.eval.text_normalizer import TextNormalizer
+        from x_voice.eval.text_normalizer_improved import TextNormalizer
     except ImportError:
         print("Warning: TextNormalizer is unavailable, skip text normalization.")
         return text
@@ -995,6 +1126,28 @@ def translate_text_nllb(text, src_lang, tgt_lang, device_name=device, show_info=
         )
     return tokenizer.batch_decode(outputs, skip_special_tokens=True)[0].strip()
 
+# def prepare_text_tokens(text, tokenizer_name, lang, ipa_tokenizer_getter):
+#     if tokenizer_name == "pinyin":
+#         return convert_char_to_pinyin([text], polyphone=True)[0]
+
+#     if tokenizer_name.startswith("ipa"):
+#         ipa_tokenizer = ipa_tokenizer_getter(lang)
+
+#         ipa_text = ipa_tokenizer(text)
+
+#         print("\n===== DEBUG TEXT =====")
+#         print("lang:", lang)
+#         print("text:", text)
+#         print("ipa_text:", ipa_text)
+
+#         tokens = str_to_list_ipa_all(ipa_text, tokenizer_name, lang)
+
+#         print("tokens:", tokens)
+#         print("======================\n")
+
+#         return tokens
+
+#     return list(text)
 
 def prepare_text_tokens(text, tokenizer_name, lang, ipa_tokenizer_getter):
     if tokenizer_name == "pinyin":
@@ -1222,7 +1375,7 @@ def infer_xvoice_process(
             all_batches.append((batch_text, batch_spans, batch_dominant_lang))
 
     print(f"\nGenerating audio in {len(all_batches)} chunks...")
-    
+
     if len(all_batches) == 0:
         return None, target_sample_rate, None
 
@@ -1231,7 +1384,7 @@ def infer_xvoice_process(
     language_ids_list = []
     time_language_ids_list = []
     durations = []
-    
+
     ref_tokens = prepare_text_tokens(ref_text, tokenizer_name, ref_lang, ipa_tokenizer_getter)
     ref_lang_id = lang_to_id(ref_lang, lang_to_id_map)
 
@@ -1248,7 +1401,7 @@ def infer_xvoice_process(
             lang_to_id_map,
         )
         final_text_list.append(ref_tokens + gen_tokens)
-        
+
         dominant_lang_id = lang_to_id(dominant_lang, lang_to_id_map)
         language_ids_list.append([ref_lang_id] * len(ref_tokens) + gen_lang_ids)
         time_language_ids_list.append(dominant_lang_id)
@@ -1274,7 +1427,7 @@ def infer_xvoice_process(
     cond_batch = audio.expand(B, -1)
 
     duration_tensor = torch.tensor(durations, dtype=torch.long, device=device_name)
-    
+
     # language_ids_list is a list of lists of varying lengths.
     # In CFM sample, language_ids can be [b, nt]. We need to pad it to max_seq_len.
     # We can use torch.nn.utils.rnn.pad_sequence
@@ -1306,21 +1459,21 @@ def infer_xvoice_process(
             generated = audio_post_processing(generated, threshold=2.5, limit=3.5)
 
         generated = generated.to(torch.float32)
-        
+
         generated_waves = []
         spectrograms = []
-        
+
         for i in range(B):
             duration_i = durations[i]
             gen_i = generated[i:i+1] # [1, max_duration, num_channels]
-            
+
             if reverse:
                 gen_i = gen_i[:, : duration_i - ref_audio_len, :]
             else:
                 gen_i = gen_i[:, ref_audio_len:duration_i, :]
-                
+
             generated_mel_spec = gen_i.permute(0, 2, 1)
-            
+
             if mel_spec_type_value == "vocos":
                 generated_wave = vocoder.decode(generated_mel_spec).cpu()
             elif mel_spec_type_value == "bigvgan":
@@ -1349,7 +1502,7 @@ def infer_xvoice_process(
         if not chunks_for_text:
             final_waves_per_text.append(None)
             continue
-            
+
         if cross_fade_duration_value <= 0:
             final_wave = np.concatenate(chunks_for_text)
         else:
@@ -1371,7 +1524,7 @@ def infer_xvoice_process(
         final_waves_per_text.append(final_wave)
 
     combined_spectrogram = np.concatenate(spectrograms, axis=1) if spectrograms else None
-    
+
     if len(gen_text) == 1:
         return final_waves_per_text[0], target_sample_rate, combined_spectrogram
     return final_waves_per_text, target_sample_rate, combined_spectrogram
@@ -1446,7 +1599,7 @@ def infer_xvoice_droptext_process(
             all_batches.append((batch_text, batch_spans, batch_dominant_lang))
 
     print(f"\nGenerating audio in {len(all_batches)} chunks...")
-    
+
     if len(all_batches) == 0:
         return None, target_sample_rate, None
 
@@ -1455,7 +1608,7 @@ def infer_xvoice_droptext_process(
     language_ids_list = []
     time_language_ids_list = []
     durations = []
-    
+
     for batch_text, batch_spans, dominant_lang in all_batches:
         batch_units = count_lang_spans_units(batch_spans)
         local_batch_speed = local_speed
@@ -1469,7 +1622,7 @@ def infer_xvoice_droptext_process(
             lang_to_id_map,
         )
         final_text_list.append(gen_tokens)
-        
+
         dominant_lang_id = lang_to_id(dominant_lang, lang_to_id_map)
         language_ids_list.append(gen_lang_ids)
         time_language_ids_list.append(dominant_lang_id)
@@ -1513,22 +1666,22 @@ def infer_xvoice_droptext_process(
             generated = audio_post_processing(generated, threshold=2.5, limit=3.5)
 
         generated = generated.to(torch.float32)
-        
+
         generated_waves = []
         spectrograms = []
-        
+
         # Process each item in the batch
         for i in range(B):
             duration_i = durations[i]
             gen_i = generated[i:i+1] # [1, max_duration, num_channels]
-            
+
             if reverse:
                 gen_i = gen_i[:, : duration_i - ref_audio_len, :]
             else:
                 gen_i = gen_i[:, ref_audio_len:duration_i, :]
-                
+
             generated_mel_spec = gen_i.permute(0, 2, 1)
-            
+
             if mel_spec_type_value == "vocos":
                 generated_wave = vocoder.decode(generated_mel_spec).cpu()
             elif mel_spec_type_value == "bigvgan":
@@ -1540,16 +1693,16 @@ def infer_xvoice_droptext_process(
                 generated_wave = generated_wave * rms / target_rms_value
             if loudness_norm:
                 generated_wave = normalize_audio_loudness(generated_wave, target_sample_rate, target_lufs=-23.0)
-            
+
             wave_np = generated_wave.squeeze().numpy()
-            
+
             if remove_silence_chunk:
                 batch_text = all_batches[i][0].strip()
                 # If the chunk doesn't end with punctuation, trim trailing silence aggressively
                 # If it doesn't start with punctuation, trim leading silence aggressively
                 is_start_punct = re.match(r'^[\W_]', batch_text) is not None
                 is_end_punct = re.search(r'[\W_]$', batch_text) is not None
-                
+
                 if not (is_start_punct or is_end_punct):
                     # print("removing silence")
                     # We trim the chunk to remove extra silence generated by the model
@@ -1571,7 +1724,7 @@ def infer_xvoice_droptext_process(
         if not chunks_for_text:
             final_waves_per_text.append(None)
             continue
-            
+
         if cross_fade_duration_value <= 0:
             final_wave = np.concatenate(chunks_for_text)
         else:
@@ -1593,7 +1746,7 @@ def infer_xvoice_droptext_process(
         final_waves_per_text.append(final_wave)
 
     combined_spectrogram = np.concatenate(spectrograms, axis=1) if spectrograms else None
-    
+
     if len(gen_text) == 1:
         return final_waves_per_text[0], target_sample_rate, combined_spectrogram
     return final_waves_per_text, target_sample_rate, combined_spectrogram

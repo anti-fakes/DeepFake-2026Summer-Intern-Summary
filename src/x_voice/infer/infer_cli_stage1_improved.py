@@ -40,7 +40,7 @@ from hydra.utils import get_class
 from omegaconf import OmegaConf
 from unidecode import unidecode
 
-from x_voice.infer.utils_infer import (
+from x_voice.infer.utils_infer_improved import (
     cfg_strength,
     cross_fade_duration,
     detect_segment_lang,
@@ -311,7 +311,7 @@ def main():
 
     chunks = re.split(reg1, gen_text)
     segments_info = []
-    from x_voice.infer.utils_infer import auto_split_mixed_text
+    from x_voice.infer.utils_infer_improved import auto_split_mixed_text
 
     for text in chunks:
         if not text.strip():

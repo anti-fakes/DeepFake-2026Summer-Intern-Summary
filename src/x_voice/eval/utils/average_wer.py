@@ -12,8 +12,8 @@ if not whole:
     deles = []
     subses = []
     for line in open(infile, "r").readlines():
-        wav_path, wer, text_ref, text_res, inse, dele, subs = line.strip().split("\t")
-            
+        wav_path, wer, text_ref, text_res, inse, dele, subs = line.rstrip("\n").split("\t")
+
         wers.append(float(wer))
         inses.append(float(inse))
         deles.append(float(dele))
@@ -37,7 +37,7 @@ else:
     words = 0
     wers = []
     for line in open(infile, "r").readlines():
-        wav_path, edit_distance, len_words, wer_per_sen, text_ref, text_res = line.strip().split("\t")
+        wav_path, edit_distance, len_words, wer_per_sen, text_ref, text_res = line.rstrip("\n").split("\t")
         scores += float(edit_distance)
         words += float(len_words)
         wers.append(float(wer_per_sen))

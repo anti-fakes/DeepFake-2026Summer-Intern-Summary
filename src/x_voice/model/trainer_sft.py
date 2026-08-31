@@ -139,7 +139,7 @@ class Trainer_SFT:
         else:
             self.optimizer = AdamW(model.parameters(), lr=learning_rate, fused=True)
         self.model, self.optimizer = self.accelerator.prepare(self.model, self.optimizer)
-        
+
         self.pretrained_path = pretrained_path
         self.use_total_text = use_total_text
 
@@ -300,7 +300,7 @@ class Trainer_SFT:
 
     def train(self, train_dataset: Dataset, num_workers=16, resumable_with_seed: int = None):
         if self.log_samples:
-            from x_voice.infer.utils_infer import cfg_strength, load_vocoder, nfe_step, sway_sampling_coef
+            from x_voice.infer.utils_infer_original import cfg_strength, load_vocoder, nfe_step, sway_sampling_coef
 
             vocoder = load_vocoder(
                 vocoder_name=self.vocoder_name, is_local=self.is_local_vocoder, local_path=self.local_vocoder_path

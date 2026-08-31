@@ -140,7 +140,7 @@ class Trainer:
         else:
             self.optimizer = AdamW(model.parameters(), lr=learning_rate, fused=True)
         self.model, self.optimizer = self.accelerator.prepare(self.model, self.optimizer)
-        
+
         self.pretrained_path = pretrained_path
         self.freeze = False
         self.freeze_update = freeze_update
@@ -187,125 +187,290 @@ class Trainer:
 
     def load_checkpoint(self):
         self.accelerator.wait_for_everyone()
+
         has_checkpoint = False
         if exists(self.checkpoint_path) and os.path.exists(self.checkpoint_path):
-             if any(filename.endswith((".pt", ".safetensors")) for filename in os.listdir(self.checkpoint_path)):
+            if any(
+                filename.endswith((".pt", ".safetensors"))
+                for filename in os.listdir(self.checkpoint_path)
+            ):
                 has_checkpoint = True
+
+        # ============================================================
+        # No existing fine-tuning checkpoint:
+        # load pretrained checkpoint
+        # ============================================================
         if not has_checkpoint:
             if self.pretrained_path:
                 if not os.path.exists(self.pretrained_path):
-                    print(f"The pretrained checkpoint provided does not exist: {self.pretrained_path}")
+                    print(
+                        f"The pretrained checkpoint provided does not exist: "
+                        f"{self.pretrained_path}"
+                    )
                     return 0
+
                 if self.is_main:
                     if self.continue_training:
-                        print(f"\n[Continue Training] Will contine to train the model on a new dataset. Pretrained model path: {self.pretrained_path}")
+                        print(
+                            "\n[Continue Training] "
+                            "Will continue to train the model on a new dataset. "
+                            f"Pretrained model path: {self.pretrained_path}"
+                        )
                     else:
-                        print(f"\nWill load original F5-TTS checkpoint and transfer it to multilingual. Pretrained model path: {self.pretrained_path}")
+                        print(
+                            "\nWill load original F5-TTS checkpoint "
+                            "and transfer it to multilingual. "
+                            f"Pretrained model path: {self.pretrained_path}"
+                        )
+
+                # Load pretrained checkpoint.
                 if self.pretrained_path.endswith(".safetensors"):
                     from safetensors.torch import load_file
-                    checkpoint = load_file(self.pretrained_path, device="cpu")
+
+                    checkpoint = load_file(
+                        self.pretrained_path,
+                        device="cpu",
+                    )
                 else:
-                    checkpoint = torch.load(self.pretrained_path, map_location="cpu")
-                    if "model_state_dict" in checkpoint: checkpoint = checkpoint["model_state_dict"]
-                    if "ema_model_state_dict" in checkpoint: checkpoint = checkpoint["ema_model_state_dict"]
+                    checkpoint = torch.load(
+                        self.pretrained_path,
+                        map_location="cpu",
+                    )
+                    if "model_state_dict" in checkpoint:
+                        checkpoint = checkpoint["model_state_dict"]
+                    if "ema_model_state_dict" in checkpoint:
+                        checkpoint = checkpoint["ema_model_state_dict"]
 
                 model_obj = self.accelerator.unwrap_model(self.model)
                 model_dict = model_obj.state_dict()
                 filtered_dict = {}
+
+                # ====================================================
+                # Transfer pretrained weights.
+                #
+                # For ordinary parameters:
+                #   load only if the shape is identical.
+                #
+                # For the text token embedding:
+                #   allow vocabulary extension while preserving all
+                #   pretrained rows.
+                # ====================================================
                 for k, v in checkpoint.items():
                     clean_k = k.replace("ema_model.", "")
-                    if clean_k in model_dict and v.shape == model_dict[clean_k].shape and "cond_fusion" not in clean_k:
+
+                    if clean_k not in model_dict:
+                        continue
+
+                    target_tensor = model_dict[clean_k]
+
+                    if v.shape != target_tensor.shape:
+                        if (
+                            clean_k == "transformer.text_embed.text_embed.weight"
+                            and v.ndim == 2
+                            and target_tensor.ndim == 2
+                            and v.shape[1] == target_tensor.shape[1]
+                            and v.shape[0] < target_tensor.shape[0]
+                        ):
+                            extended_weight = target_tensor.clone()
+
+                            # Base checkpoint:
+                            #   vocab 820 -> embedding (821, 512)
+                            #
+                            # Extended vocab:
+                            #   vocab 861 -> embedding (862, 512)
+                            #
+                            # Copy every pretrained row. The remaining
+                            # rows stay randomly initialized and are
+                            # learned during fine-tuning.
+                            extended_weight[: v.shape[0]] = v
+                            filtered_dict[clean_k] = extended_weight
+
+                            if self.is_main:
+                                print(
+                                    f"partially load {clean_k}: "
+                                    f"{tuple(v.shape)} -> "
+                                    f"{tuple(extended_weight.shape)}"
+                                )
+                            continue
+
                         if self.is_main:
-                            print(f"will load {clean_k}")
-                        filtered_dict[clean_k] = v
+                            print(
+                                f"skip shape mismatch {clean_k}: "
+                                f"pretrained={tuple(v.shape)}, "
+                                f"current={tuple(target_tensor.shape)}"
+                            )
+                        continue
+
+                    # F5-TTS -> X-Voice initial transfer:
+                    # exclude cond_fusion.
+                    # For X-Voice continuation training, load it.
+                    if (
+                        not self.continue_training
+                        and "cond_fusion" in clean_k
+                    ):
+                        continue
+
+                    if self.is_main:
+                        print(f"will load {clean_k}")
+
+                    filtered_dict[clean_k] = v
+
                 model_obj.load_state_dict(filtered_dict, strict=False)
+
                 if self.is_main:
-                    self.ema_model.ema_model.load_state_dict(filtered_dict, strict=False)
-                
-                if self.is_main:
-                    print(f"Successfully inherited {len(filtered_dict)} layers from backbone.\n")
+                    self.ema_model.ema_model.load_state_dict(
+                        filtered_dict,
+                        strict=False,
+                    )
+                    print(
+                        f"Successfully inherited "
+                        f"{len(filtered_dict)} layers from backbone.\n"
+                    )
+
                 if not self.continue_training:
                     self.freeze = True
-                return 0
-            else:
+
                 return 0
 
-        
+            return 0
+
+        # ============================================================
+        # Existing fine-tuning checkpoint:
+        # resume training normally.
+        # ============================================================
         if "model_last.pt" in os.listdir(self.checkpoint_path):
             latest_checkpoint = "model_last.pt"
         else:
-            # Updated to consider pretrained models for loading but prioritize training checkpoints
             all_checkpoints = [
                 f
                 for f in os.listdir(self.checkpoint_path)
-                if (f.startswith("model_") or f.startswith("pretrained_")) and f.endswith((".pt", ".safetensors"))
+                if (
+                    f.startswith("model_")
+                    or f.startswith("pretrained_")
+                )
+                and f.endswith((".pt", ".safetensors"))
             ]
 
-            # First try to find regular training checkpoints
-            training_checkpoints = [f for f in all_checkpoints if f.startswith("model_") and f != "model_last.pt"]
+            training_checkpoints = [
+                f
+                for f in all_checkpoints
+                if f.startswith("model_")
+                and f != "model_last.pt"
+            ]
+
             if training_checkpoints:
                 latest_checkpoint = sorted(
                     training_checkpoints,
                     key=lambda x: int("".join(filter(str.isdigit, x))),
                 )[-1]
             else:
-                # If no training checkpoints, use pretrained model
-                latest_checkpoint = next(f for f in all_checkpoints if f.startswith("pretrained_"))
+                latest_checkpoint = next(
+                    f
+                    for f in all_checkpoints
+                    if f.startswith("pretrained_")
+                )
 
-        if latest_checkpoint.endswith(".safetensors"):  # always a pretrained checkpoint
+        if latest_checkpoint.endswith(".safetensors"):
             from safetensors.torch import load_file
 
-            checkpoint = load_file(f"{self.checkpoint_path}/{latest_checkpoint}", device="cpu")
-            checkpoint = {"ema_model_state_dict": checkpoint}
-        elif latest_checkpoint.endswith(".pt"):
-            # checkpoint = torch.load(f"{self.checkpoint_path}/{latest_checkpoint}", map_location=self.accelerator.device)  # rather use accelerator.load_state ಥ_ಥ
-            checkpoint = torch.load(
-                f"{self.checkpoint_path}/{latest_checkpoint}", weights_only=True, map_location="cpu"
+            checkpoint = load_file(
+                f"{self.checkpoint_path}/{latest_checkpoint}",
+                device="cpu",
             )
+            checkpoint = {"ema_model_state_dict": checkpoint}
+
+        elif latest_checkpoint.endswith(".pt"):
+            checkpoint = torch.load(
+                f"{self.checkpoint_path}/{latest_checkpoint}",
+                weights_only=True,
+                map_location="cpu",
+            )
+
         if self.is_main:
-            print(f"Loading checkpoint from: {self.checkpoint_path}/{latest_checkpoint}")
-        # patch for backward compatibility, 305e3ea
-        for key in ["ema_model.mel_spec.mel_stft.mel_scale.fb", "ema_model.mel_spec.mel_stft.spectrogram.window"]:
+            print(
+                f"Loading checkpoint from: "
+                f"{self.checkpoint_path}/{latest_checkpoint}"
+            )
+
+        # Backward compatibility patch.
+        for key in [
+            "ema_model.mel_spec.mel_stft.mel_scale.fb",
+            "ema_model.mel_spec.mel_stft.spectrogram.window",
+        ]:
             if key in checkpoint["ema_model_state_dict"]:
                 del checkpoint["ema_model_state_dict"][key]
 
         if self.is_main:
-            self.ema_model.load_state_dict(checkpoint["ema_model_state_dict"])
+            self.ema_model.load_state_dict(
+                checkpoint["ema_model_state_dict"]
+            )
 
         if "update" in checkpoint or "step" in checkpoint:
-            # patch for backward compatibility, with before f992c4e
             if "step" in checkpoint:
-                checkpoint["update"] = checkpoint["step"] // self.grad_accumulation_steps
-                if self.grad_accumulation_steps > 1 and self.is_main:
+                checkpoint["update"] = (
+                    checkpoint["step"]
+                    // self.grad_accumulation_steps
+                )
+
+                if (
+                    self.grad_accumulation_steps > 1
+                    and self.is_main
+                ):
                     print(
-                        "F5-TTS WARNING: Loading checkpoint saved with per_steps logic (before f992c4e), will convert to per_updates according to grad_accumulation_steps setting, may have unexpected behaviour."
+                        "F5-TTS WARNING: Loading checkpoint saved "
+                        "with per_steps logic (before f992c4e), "
+                        "will convert to per_updates according to "
+                        "grad_accumulation_steps setting, "
+                        "may have unexpected behaviour."
                     )
-            # patch for backward compatibility, 305e3ea
-            for key in ["mel_spec.mel_stft.mel_scale.fb", "mel_spec.mel_stft.spectrogram.window"]:
+
+            for key in [
+                "mel_spec.mel_stft.mel_scale.fb",
+                "mel_spec.mel_stft.spectrogram.window",
+            ]:
                 if key in checkpoint["model_state_dict"]:
                     del checkpoint["model_state_dict"][key]
 
-            self.accelerator.unwrap_model(self.model).load_state_dict(checkpoint["model_state_dict"])
-            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            self.accelerator.unwrap_model(
+                self.model
+            ).load_state_dict(
+                checkpoint["model_state_dict"]
+            )
+
+            self.optimizer.load_state_dict(
+                checkpoint["optimizer_state_dict"]
+            )
+
             if self.scheduler:
-                self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+                self.scheduler.load_state_dict(
+                    checkpoint["scheduler_state_dict"]
+                )
+
             update = checkpoint["update"]
+
         else:
             checkpoint["model_state_dict"] = {
                 k.replace("ema_model.", ""): v
                 for k, v in checkpoint["ema_model_state_dict"].items()
                 if k not in ["initted", "update", "step"]
             }
-            self.accelerator.unwrap_model(self.model).load_state_dict(checkpoint["model_state_dict"])
+
+            self.accelerator.unwrap_model(
+                self.model
+            ).load_state_dict(
+                checkpoint["model_state_dict"]
+            )
+
             update = 0
 
         del checkpoint
         gc.collect()
+
         return update
 
     def train(self, train_dataset: Dataset, num_workers=16, resumable_with_seed: int = None):
         if self.log_samples:
-            from x_voice.infer.utils_infer import cfg_strength, load_vocoder, nfe_step, sway_sampling_coef
+            from x_voice.infer.utils_infer_original import cfg_strength, load_vocoder, nfe_step, sway_sampling_coef
 
             vocoder = load_vocoder(
                 vocoder_name=self.vocoder_name, is_local=self.is_local_vocoder, local_path=self.local_vocoder_path
@@ -370,7 +535,7 @@ class Trainer:
         )  # actual multi_gpu updates = single_gpu updates / gpu nums
         start_update = self.load_checkpoint()
         global_update = start_update
-        
+
         if self.freeze and self.freeze_update is not None and global_update < self.freeze_update:
             if self.is_main:
                 print(f"Updates {global_update} < {self.freeze_update}: Freezing DiT blocks...")

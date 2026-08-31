@@ -17,13 +17,13 @@ from tqdm import tqdm
 
 from torch.nn.utils.rnn import pad_sequence
 
-from x_voice.eval.utils_eval import (
+from x_voice.eval.utils_eval_original import (
     get_inference_prompt,
     get_librispeech_test_clean_metainfo,
     get_seedtts_testset_metainfo,
     get_testset_metainfo,
 )
-from x_voice.infer.utils_infer import load_checkpoint, load_vocoder, normalize_audio_loudness, audio_post_processing
+from x_voice.infer.utils_infer_original import load_checkpoint, load_vocoder, normalize_audio_loudness, audio_post_processing
 from x_voice.model import CFM, CFM_SFT
 from x_voice.model.utils import get_tokenizer, get_ipa_id
 from x_voice.eval.speaking_rate_predictor import SpeedPredictor
@@ -79,8 +79,8 @@ def main():
     parser.add_argument("--denoise_ref", action="store_true")
     parser.add_argument("--post_processing", action="store_true")
     parser.add_argument("--loudness_norm", action="store_true")
-    
-    
+
+
 
     args = parser.parse_args()
 
@@ -101,15 +101,15 @@ def main():
     cfg_decay_time = args.cfg_decay_time
     drop_text = args.drop_text
     decode_dir = args.decode_dir
-    
+
     post_processing = args.post_processing
     denoise_ref = args.denoise_ref
     loudness_norm = args.loudness_norm
-    
+
     if sp_type in ["utf", "syllable"]:
         assert not drop_text, "\"utf\" or \"syllable\" methods need reference text to predict duration, if you want transcript free inference, use \"pretrained\" method"
-    in2lang = { 
-        "th":"thai", "id":"indonesian", "vi":"vietnamese", 
+    in2lang = {
+        "th":"thai", "id":"indonesian", "vi":"vietnamese",
         "zh":"chinese", "en":"english",
         "de":"german", "fr":"french", "es":"spanish", "pl":"polish", "it":"italian", "nl":"dutch", "pt":"portuguese",
         "ko":"korean", "ja":"japanese", "ru":"russian",
@@ -165,24 +165,24 @@ def main():
     hop_length = model_cfg.model.mel_spec.hop_length
     win_length = model_cfg.model.mel_spec.win_length
     n_fft = model_cfg.model.mel_spec.n_fft
-    
-    
-    sft = OmegaConf.select(model_cfg, "model.sft", default=False)  
-    stress = OmegaConf.select(model_cfg, "model.stress", default=True)  
-    
-    
-    
+
+
+    sft = OmegaConf.select(model_cfg, "model.sft", default=False)
+    stress = OmegaConf.select(model_cfg, "model.stress", default=True)
+
+
+
     # speedpredictor config
     if sp_type == "pretrained":
         sp_cfg = OmegaConf.load(str(files("rate_pred").joinpath(f"configs/{exp_name_sp}.yaml")))
         mel_spec_kwargs = sp_cfg.model.mel_spec
         sp_arc = sp_cfg.model.arch
-        
+
         model_sp = SpeedPredictor(
             mel_spec_kwargs=mel_spec_kwargs,
             arch_kwargs = sp_arc
         ).to(device)
-        
+
         ckpt_path_sp = rel_path + f"/ckpts/{exp_name_sp}/model_{ckpt_step_sp}.pt"
         if not os.path.exists(ckpt_path_sp):
             ckpt_path_sp = rel_path + f"/{sp_cfg.ckpts.save_dir}/model_{ckpt_step_sp}.pt"
@@ -191,7 +191,7 @@ def main():
         model_sp = load_checkpoint(model_sp, ckpt_path_sp, device, dtype=dtype, use_ema=use_ema)
     else:
         model_sp = None
-    
+
     # Vocoder model
     local = True
     if mel_spec_type == "vocos":
@@ -208,7 +208,7 @@ def main():
         # Model
         model = CFM_SFT(
             transformer=model_cls(
-                **model_arc, 
+                **model_arc,
                 sft=sft,
                 text_num_embeds=vocab_size+1,
                 mel_dim=n_mel_channels
@@ -230,7 +230,7 @@ def main():
     else:
         model = CFM(
             transformer=model_cls(
-                **model_arc, 
+                **model_arc,
                 sft=sft,
                 text_num_embeds=vocab_size,
                 mel_dim=n_mel_channels
@@ -249,9 +249,9 @@ def main():
             ),
             vocab_char_map=vocab_char_map,
         ).to(device)
-        # model.transformer.checkpoint_activations = False 
-    
-        
+        # model.transformer.checkpoint_activations = False
+
+
     ckpt_prefix = rel_path + f"/ckpts/{exp_name}/model_{ckpt_step}"
     if os.path.exists(ckpt_prefix + ".pt"):
         ckpt_path = ckpt_prefix + ".pt"
@@ -263,7 +263,7 @@ def main():
     dtype = torch.float32 if mel_spec_type == "bigvgan"  else None
     model = load_checkpoint(model, ckpt_path, device, dtype=dtype, use_ema=use_ema)
     # model = accelerator.prepare(model)
-    
+
     lang_to_id = model.transformer.lang_to_id
     text_infill_lang_type = model.transformer.text_infill_lang_type
     time_infill_lang_type = model.transformer.time_infill_lang_type
@@ -279,7 +279,7 @@ def main():
         if in_language_idx == len(lang_to_id):
             print(f"Not supported language: {in_language}, id will set to <unk>.")
         if tokenizer in tokenizer_class_map:
-            ipa_id = get_ipa_id(in_language) 
+            ipa_id = get_ipa_id(in_language)
             tokenizer_class = tokenizer_class_map[tokenizer]
             ipa_tokenizer = tokenizer_class(language=ipa_id, with_stress=stress)
 
@@ -287,7 +287,7 @@ def main():
             ref_ipa_id = get_ipa_id(ref_language)
             ref_ipa_tokenizer = tokenizer_class(language=ref_ipa_id, with_stress=stress)
             ref_language_idx = lang_to_id.get(ref_language, len(lang_to_id))
-        
+
         if testset == "ls_pc_test_clean":
             data_dir = "/data"
             metalst = rel_path + "/data/librispeech_pc_test_clean_cross_sentence.lst"
@@ -298,7 +298,7 @@ def main():
             data_dir = rel_path + f"/data/seedtts_testset/{in_language}"
             metalst = data_dir + "/meta.lst"
             metainfo = get_seedtts_testset_metainfo(metalst, drop_text=drop_text)
-            
+
         elif testset in ["lemas_eval", "x_voice_eval"]:
             data_dir = rel_path + f"/data/{testset}/zero_shot/{in_language}"
             print(f"Loading {testset} data from: {data_dir}")
@@ -332,10 +332,10 @@ def main():
                     "zero_shot"
                 )
         output_dir += f"/{ref_language}_{in_language}/wavs"
-                
+
         print(f"will be saved to:{output_dir}")
-        
-        
+
+
         if not os.path.exists(output_dir) and accelerator.is_main_process:
             os.makedirs(output_dir)
     # -------------------------------------------------#
@@ -363,7 +363,7 @@ def main():
             ref_ipa_tokenizer=ref_ipa_tokenizer,
             denoise_ref_wav=denoise_ref
         )
- 
+
         # start batch inference
         accelerator.wait_for_everyone()
         start = time.time()
@@ -374,7 +374,7 @@ def main():
                 ref_mels = ref_mels.to(device)
                 ref_mel_lens = torch.tensor(ref_mel_lens, dtype=torch.long).to(device)
                 total_mel_lens = torch.tensor(total_mel_lens, dtype=torch.long).to(device)
-                
+
                 batch_lang_ids = []
                 batch_prompt_lang_ids = []
                 for r_len, g_len in zip(ref_text_lens, gen_text_lens):
@@ -403,9 +403,9 @@ def main():
                     # Final result
                     if post_processing:
                         generated = audio_post_processing(generated, threshold=2.5, limit=3.5)
-                    
+
                     for i, gen in enumerate(generated):
-                        
+
                         if reverse:
                             gen = gen[: total_mel_lens[i] - ref_mel_lens[i], :].unsqueeze(0)
                         else:
@@ -420,7 +420,7 @@ def main():
                             generated_wave = generated_wave * ref_rms_list[i] / target_rms
                         if loudness_norm:
                             generated_wave = normalize_audio_loudness(generated_wave, target_sample_rate, target_lufs=-23.0)
-                        
+
                         torchaudio.save(f"{output_dir}/{utts[i]}.wav", generated_wave, target_sample_rate)
         accelerator.wait_for_everyone()
         if accelerator.is_main_process:

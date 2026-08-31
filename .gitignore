@@ -8,3 +8,22 @@ runs/
 my_vocoder
 tests/
 .gradio/
+# Local training/evaluation artifacts
+*.pt
+*.pth
+wandb/
+results
+eval_compare/
+ckpts/*
+!ckpts/README.md
+data/MSS_Korean_Train_ipa_v6/
+data/XVoice_KOEN_CS_249h_ipa_v6
+data/XVoice_Stage1_1100h_ipa_v6
+data/XVoice_Stage1_1100h_sylfix_ipa_v6
+data/x_voice_eval
+
+# Internship source documents (reference-only; never publish)
+20260826_하계연수생 최종보고서_이민서 (1).hwp
+2026_하계_연구연수생_최종발표.pptx
+2026_하계_연구연수생_최종발표.pptx
+한국어_음성_데이터셋조사.docx

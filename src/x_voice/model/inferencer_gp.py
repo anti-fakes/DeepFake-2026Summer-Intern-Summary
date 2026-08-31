@@ -10,7 +10,7 @@ from tqdm import tqdm
 from accelerate import Accelerator
 from accelerate.utils import DistributedDataParallelKwargs, InitProcessGroupKwargs
 from torch.utils.data import DataLoader, Dataset, SequentialSampler
-from x_voice.infer.utils_infer import load_checkpoint, load_vocoder
+from x_voice.infer.utils_infer_original import load_checkpoint, load_vocoder
 from x_voice.model import CFM
 from x_voice.model.dataset import DynamicBatchSampler, collate_fn_gp_inference
 from x_voice.model.utils import default, exists,  convert_char_to_pinyin,  str_to_list_ipa_all # trim_text, available_texts, create_derangement,
@@ -29,7 +29,7 @@ class Inferencer_gp:
         batch_size_type: str = "sample",
         max_samples=32,
         accelerate_kwargs: dict = dict(),
-        mel_spec_type: str = "vocos", 
+        mel_spec_type: str = "vocos",
         tokenizer: str = "char",
         nfe_step: int = 32,
         cfg_strength: float = 2.0,
@@ -67,7 +67,7 @@ class Inferencer_gp:
         self.executor = ThreadPoolExecutor(max_workers=16)
 
         dtype = torch.float32 if self.mel_spec_type == "bigvgan" else None
-        from x_voice.infer.utils_infer import load_checkpoint
+        from x_voice.infer.utils_infer_original import load_checkpoint
         model = load_checkpoint(model, checkpoint_path, str(self.accelerator.device), dtype=dtype, use_ema=True)
         if self.mel_spec_type == "vocos":
             vocoder_local_path = "my_vocoder/vocos-mel-24khz"
@@ -126,11 +126,11 @@ class Inferencer_gp:
 
         for batch in dataloader:
             mel_spec = batch["mel"].permute(0, 2, 1)
-            
+
             self.process_batch(
-                mel_spec, 
-                text=batch["gen_text"], 
-                lens=batch["mel_lengths"], 
+                mel_spec,
+                text=batch["gen_text"],
+                lens=batch["mel_lengths"],
                 total_lens=batch["total_mel_len"],
                 rel_paths=batch["rel_paths"],
                 ref_text=batch["ref_text"],
@@ -138,7 +138,7 @@ class Inferencer_gp:
                 gen_text_ipa=batch["gen_text_ipa"],
                 language_ids=batch["language_ids"]
             )
-            
+
             progress_bar.update(1)
 
         self.accelerator.wait_for_everyone()
@@ -147,10 +147,10 @@ class Inferencer_gp:
     def process_batch(
         self,
         inp: float["b n d"] | float["b nw"],  # mel or raw wave  # noqa: F722
-        text: int["b nt"] | list[str],  # target text # noqa: F722 
+        text: int["b nt"] | list[str],  # target text # noqa: F722
         lens: int["b"] | None = None,  # reference mel lens # noqa: F821
         total_lens: int["b"] | None = None,
-        rel_paths: str["b nt"] |list[str] = None, 
+        rel_paths: str["b nt"] |list[str] = None,
         ref_text: int["b nt"] | list[str] = None,
         ref_text_ipa: int["b nt"] | list[str] = None,
         gen_text_ipa: int["b nt"] | list[str] = None,
@@ -160,11 +160,11 @@ class Inferencer_gp:
         for i in range(len(rel_paths)):
             pt_file_path = os.path.join(self.root_path, f"{rel_paths[i]}.pt")
             json_file_path = os.path.join(self.root_path, f"{rel_paths[i]}.json")
-            
+
             if not (os.path.exists(pt_file_path) and os.path.exists(json_file_path)):
                 all_files_exist = False
                 break
-        
+
         if all_files_exist:
             # Skip this batch.
             return
@@ -173,7 +173,7 @@ class Inferencer_gp:
 
         if not exists(lens):
             lens = torch.full((batch,), seq_len, device=device)
-        
+
         text_source_input = []
         duration = torch.tensor(total_lens, dtype=torch.long, device=device)
         for i in range(batch):
@@ -185,7 +185,7 @@ class Inferencer_gp:
                 text_source_input.append(str_to_list_ipa_all(changed + " " + original, self.tokenizer))
             else:
                 text_source_input.append(changed + " " + original)
-        
+
         with torch.inference_mode():
             generated, _ = self.accelerator.unwrap_model(self.model).sample(
                 cond=inp,
@@ -215,7 +215,7 @@ class Inferencer_gp:
                 curr_gen_part = generated_cpu[i, :curr_gen_len, :]
                 curr_gen_text_ipa = gen_text_ipa[i]
                 curr_gen_text = text[i]
-                
+
                 pt_save_path = os.path.join(self.root_path, f"{rel_path_no_suffix}.pt")
                 json_save_path = os.path.join(self.root_path, f"{rel_path_no_suffix}.json")
                 wav_save_path = os.path.join(self.root_path, f"{rel_path_no_suffix}.wav")
@@ -229,17 +229,17 @@ class Inferencer_gp:
                         curr_gen_wav = self.vocoder(gen_need_spec).squeeze(0).cpu()
 
                 self.executor.submit(
-                    self.save_worker, 
-                    curr_gen_part.clone(), 
-                    pt_save_path, 
-                    json_save_path, 
-                    curr_gen_len, 
-                    curr_gen_text, 
+                    self.save_worker,
+                    curr_gen_part.clone(),
+                    pt_save_path,
+                    json_save_path,
+                    curr_gen_len,
+                    curr_gen_text,
                     curr_gen_text_ipa,
                     wav_save_path,
                     curr_gen_wav,
                 )
-            
+
     def save_worker(self, tensor_data, pt_path, json_path, gen_len_val, text_content, text_ipa, wav_path=None, wav_tensor=None):
         os.makedirs(os.path.dirname(pt_path), exist_ok=True)
         torch.save(tensor_data, pt_path)

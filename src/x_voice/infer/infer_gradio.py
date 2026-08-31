@@ -41,7 +41,7 @@ def _silence_inference_logs():
 
 _silence_inference_logs()
 
-from x_voice.infer.utils_infer import (
+from x_voice.infer.utils_infer_original import (
     auto_split_mixed_text,
     detect_segment_lang,
     device,

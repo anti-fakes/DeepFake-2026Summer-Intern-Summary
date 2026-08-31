@@ -1,6 +1,7 @@
 # DeepFake-2026Summer-Intern-Summary (LEE Minseo)
 
 > **2026 하계 연구연수**
+>
 > **Research Period:** 2026.07.01 – 2026.08.31
 
 본 연구는 [X-Voice](https://github.com/sunnyxrxrx/X-Voice)를 기반으로 진행하였으며, **한국어 Zero-shot Cross-lingual Voice Cloning 성능 향상**을 목표로 합니다.
@@ -105,32 +106,152 @@ X-Voice는 약 **420K hours**의 다국어 음성으로 학습된 약 **0.4B** �
 
 ### 3.1 Dataset Comparison
 
-| Dataset | Script Type | Main Characteristics | Research Use |
-|---|---|---|---|
-| [AI Hub 다화자 음성합성](https://www.aihub.or.kr/aihubdata/data/view.do?aihubDataSe=data&currMenu=115&dataSetSn=542&topMenu=100) | 단문 낭독 | 다양한 일반인 화자의 깨끗한 TTS 발화 | **한국어 Fine-tuning 주 데이터** |
-| [AI Hub 감성 및 발화 스타일별 음성합성](https://www.aihub.or.kr/aihubdata/data/view.do?currMenu=115&dataSetSn=466&topMenu=100) | 감성·스타일 낭독 | 감정에 따른 억양·강세·속도·운율·말투 | Prosody / Emotion |
-| [KSS](https://huggingface.co/datasets/Bingsu/KSS_Dataset) | 단일 화자 문장 낭독 | Original / Expanded / Decomposed Script 제공 | Text Normalization 비교 |
-| [Deeply Korean Read Speech](https://www.openslr.org/97/) | 2인 화자 낭독 | Text Sentiment × Voice Sentiment + 녹음 환경 변화 | 환경·감성 다양성 |
-| [Zeroth Korean](https://www.openslr.org/40/) | 다화자 문장 낭독 | 비교적 긴 정형 문장, Audio/Text 1:1 | 장문·ASR 평가 |
-| [KsponSpeech](https://www.aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=data&dataSetSn=123) | 2인 자유대화 | 머뭇거림·반복·말 고침 등 실제 구어 | 자연발화 |
-| [AI Hub 숫자가 포함된 패턴 발화](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=484) | 패턴 문장 낭독 | ScriptITN / ScriptTN, 문맥별 숫자 읽기 | **숫자·조수사 TN** |
-| [AI Hub 한국인 외래어 발화](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=131) | 단어·짧은 문장 | 한국인의 외래어·외국 고유명사 발음 | 외래어 발음 |
-| [AI Hub 한영 혼합 인식](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=71260) | 2인 대화 | 한국어 문장 속 영어계 표현, `originalForm` 제공 | **Code-switching** |
-| [AI Hub 중·노년층 한국어 방언](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=71517) | 낭독 + 자유발화 + 2인 대화 | 강원·경상 방언 및 중·노년층 말투 | 지역·연령 다양성 |
-| [Seoul Corpus](https://www.openslr.org/113/) | 인터뷰형 자연발화 | 서울말 자연발화 + 음소 수준 TextGrid Label | 음성학 분석 |
+| Dataset | Script Type | Main Characteristics |
+|---|---|---|
+| [AI Hub 다화자 음성합성](https://www.aihub.or.kr/aihubdata/data/view.do?aihubDataSe=data&currMenu=115&dataSetSn=542&topMenu=100) | 단문 낭독 | 많은 일반인 화자의 깨끗한 TTS 발화 |
+| [AI Hub 감성 및 발화 스타일별 음성합성](https://www.aihub.or.kr/aihubdata/data/view.do?currMenu=115&dataSetSn=466&topMenu=100) | 감성·스타일 낭독 | 감정에 따른 억양·운율·말투 |
+| [KSS](https://huggingface.co/datasets/Bingsu/KSS_Dataset) | 단일 화자 문장 낭독 | 원문·정규화문·자모 분해문 제공 |
+| [Deeply Korean Read Speech](https://www.openslr.org/97/) | 2인 화자 낭독 | Text Sentiment × Voice Sentiment + 녹음 환경 변화 |
+| [Zeroth Korean](https://www.openslr.org/40/) | 다화자 문장 낭독 | 비교적 긴 정형 문장 + Audio/Text 1:1 |
+| [KsponSpeech](https://www.aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=data&dataSetSn=123) | 2인 자유대화 | 머뭇거림·반복·말 고침 등 실제 구어 |
+| [AI Hub 숫자가 포함된 패턴 발화](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=484) | 패턴 문장 낭독 | 숫자의 문맥별 다양한 읽기 방식 |
+| [AI Hub 한국인 외래어 발화](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=131) | 단어·짧은 문장 | 한국인의 외래어·고유명사 발음 |
+| [AI Hub 한영 혼합 인식](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=71260) | 2인 대화 | 한국어 문장 속 영어계 표현 |
+| [AI Hub 중·노년층 한국어 방언](https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=71517) | 낭독 + 자유발화 + 2인 대화 | 강원·경상 방언 및 중·노년층 말투 |
+| [Seoul Corpus](https://www.openslr.org/113/) | 인터뷰형 자연발화 | 서울말 자연발화 + 음소 수준 정밀 Label |
 
-### 3.2 Script Characteristics
+### 3.2 Dataset Script Examples
 
-조사한 데이터셋은 발화 형태에 따라 다음과 같이 구분할 수 있습니다.
+#### 1) AI Hub 다화자 음성합성 데이터
+
+여러 일반인 화자가 미리 정해진 짧고 정제된 한국어 문장을 읽는 **Read Speech** 데이터입니다. AI 비서·스마트홈·날씨·의료·스포츠·생활정보 등 다양한 주제의 질의형·명령형 문장이 포함되어 있습니다.
+
+**Script Examples**
+> “자려고 하니까 불 꺼.”
+> “내일 날씨는 비교적 어때?”
+> “오늘 축구 경기 언제부터야?”
+> “집 근처 운전면허 학원 알려 줘.”
+
+→ 다양한 화자의 음색과 발음 특성을 학습하기에 적합한 다화자 음성합성 데이터
+
+#### 2) AI Hub 감성 및 발화 스타일별 음성합성 데이터
+
+전문 성우가 정해진 문장을 특정 **감정 및 발화 스타일**에 맞춰 읽는 데이터입니다. 기쁨·놀람·슬픔·분노·두려움·혐오·중립 등의 감정과 낭독체·대화체·뉴스체·중계체·구연체 등의 발화 유형을 포함합니다.
+
+**Script Examples**
+> “은행가가 농부에게 말했다.”
+> “한 번 그 증거를 보여 주시면 꼭 믿겠습니다.”
+> “궁금증이 가는 것이다.”
+> “행복한 신부가 스스로 물에 몸을 던졌을 리는 만무해.”
+
+→ 감정에 따라 변화하는 억양·강세·속도·운율·말투를 학습할 수 있는 데이터
+
+#### 3) KSS (Korean Single Speaker Speech) Dataset
+
+여성 화자 1명이 정해진 한국어 문장을 읽은 단일 화자 낭독 데이터이며, `original_script`, `expanded_script`, `decomposed_script`를 함께 제공합니다.
+
+**Script Examples**
+> “용돈을 아껴 써라.”
+> “그 애 전화번호 알아?”
+> “거기 도착하면 나한테 알려 줘.”
+> `114에 전화를 해서 ...` → `일일사에 전화를 해서 ...`
+
+→ 원문·정규화문·자모 분해문을 함께 제공하여 Text Normalization 및 입력 표현 비교에 활용 가능
+
+#### 4) Deeply Korean Read Speech Corpus
+
+2인 1조의 화자가 정해진 Script를 읽는 한국어 다화자 낭독 데이터입니다. Text Sentiment와 Voice Sentiment가 별도로 제공되며 녹음 장소·거리·기기 변화도 포함합니다.
+
+**Script Example**
+> “저 식당 음식이 정말 맛있나 봐요.”
+
+→ 동일한 낭독 문장을 여러 감정·화자·녹음 환경에서 수집한 데이터
+
+#### 5) Zeroth Korean
+
+한국어 ASR 연구를 위해 구축된 다화자 문장 낭독 데이터로, 짧은 일상 회화보다 뉴스·시사·사회·정보 전달형의 비교적 긴 문장이 많이 포함됩니다.
+
+**Script Examples**
+> “그밖의 자세한 사항은 중앙선거여론조사심의위원회 홈페이지를 참조하면 된다.”
+> “가방을 비롯한 수하물들을 컨베이어 벨트 위에 가능한 한 납작하게 올려놓으십시오.”
+
+→ 비교적 길고 정형화된 한국어 문장과 정확한 전사문이 1:1로 대응
+
+#### 6) KsponSpeech
+
+약 2,000명의 한국인이 두 명씩 짝을 이루어 다양한 주제로 대화한 **Spontaneous Speech** 데이터입니다. 간투사·머뭇거림·반복·말 고침·문장 중단 등 실제 구어 특성을 포함합니다.
+
+**Script Examples**
+> “아/ 몬 소리야, 그건 또.”
+> “아/ 내일 나 알바하구나.”
+> “아/ 근데 강남 너무 비싸.”
+> “목포 너무 비싸, 어, 시외버스도 비싸고, 한 (3만원)/(삼만 원)인가 그럴걸.”
+
+→ 실제 한국어 대화의 발화 속도·호흡·억양·축약 및 비정형 문장 구조를 포함
+
+#### 7) AI Hub 숫자가 포함된 패턴 발화 데이터
+
+비밀번호·이메일·우편번호·스포츠 기록·날짜·시간·금액·수량 등 **숫자가 실제 사용되는 문맥**을 포함합니다. 숫자가 표기된 `scriptITN`과 실제 읽는 형태의 `scriptTN`을 함께 제공합니다.
+
+**Script Examples**
+> 비밀번호 `1111` → “일 일 일 일”
+> 이메일 ID `PJS0023` → “피 제이 에스 공 공 이 삼”
+> `29승 6패, 승률 83%` → “이십 구 승 육 패, 팔십 삼 퍼센트”
+> 타율 `0.143` → “일할 사푼 삼리”
+> 우편번호 `61342` → “육 일 삼 사 이”
+
+→ 동일한 숫자라도 문맥에 따라 읽는 방식이 달라지는 한국어 Number Normalization 분석에 유용
+
+#### 8) AI Hub 한국인 외래어 발화 데이터
+
+한국인이 실제 사용하는 외래어와 외국 고유명사의 한국어 발음을 수집한 데이터입니다. 목표 외래어가 포함된 문장과 단독 단어 발화가 함께 존재합니다.
+
+**Script Examples**
+> “스토리텔링을 통해서 자신의 생각과 의견을 전달하는 방법을 배우게 돼요.”
+> “혹시 트레인 언제 하는지 알아.”
+> “둠.”
+
+→ 외래어·외국 고유명사가 한국인 화자에게서 실제로 어떻게 발음되는지 분석 가능
+
+#### 9) AI Hub 한영 혼합 인식 데이터
+
+일상 및 전문 분야의 다양한 주제로 두 화자가 대화하는 **Korean-English Mixed Speech** 데이터입니다. 한국어 문장 속 영어계 표현이 한국어 발음 형태로 전사되며 영어 원형은 `originalForm`에 별도로 기록됩니다.
+
+**Script Examples**
+> “여기 런치 메뉴 중에선 리조또랑 로제파스타가 젤 나음.”
+> “매니저들 패션감각 넘치는거 봤어? 화이트셔츠에 데님인데 멋져.”
+> “그렇지? 너도 그렇게 씽킹했구나 나도 그랬는데.”
+
+→ 한국어 문장 안에 영어계 단어와 표현이 포함된 한영 혼용 발화 분석에 적합
+
+#### 10) AI Hub 중·노년층 한국어 방언 데이터
+
+강원도·경상도 중·노년층 화자의 실제 방언을 수집한 데이터로 **낭독형, 질문 기반 자유발화형, 2인 대화형**을 모두 포함합니다.
+
+**Script Examples**
+> 강원도 낭독: “그 집 메누리는 아츰지냑으로 집안 으른덜께 문안 인사를 디레고 …”
+> 경상도 낭독: “게얼에 먹을 채소나 가일 같은 것은 오데 보관을 했습니껴?”
+> 2인 대화 주제: “1. 산이 더 좋다. 2. 바다가 더 좋다.” → “나는 산이 좋더라.” / “나는 바닷가 좋아.”
+
+→ 지역 방언의 발음·억양·어휘와 중·노년층의 자연스러운 말투를 폭넓게 포함
+
+#### 11) Seoul Corpus
+
+서울말 원어민의 실제 발화를 수집한 인터뷰형 자연발화 데이터입니다. 철자 형태와 실제 발음 형태를 별도 Tier로 전사하고, 어절 경계와 음소 단위까지 Labeling합니다.
+
+**Script Example**
+> “자기 전에두 하고 와.”
+
+→ 문어체와 다른 실제 서울말의 발음 변화·연음·축약·발화 속도·억양을 분석할 수 있는 음성학 중심 데이터
+
+### 3.3 Script Type Summary
 
 - **정제된 낭독 중심**: 다화자 음성합성 / 감성 및 발화 스타일 / KSS / Deeply Korean Read Speech / Zeroth Korean / 숫자 패턴 발화
 - **자연발화·대화 중심**: KsponSpeech / Seoul Corpus
 - **특정 발음 특화**: 한국인 외래어 발화 / 숫자 패턴 발화
 - **언어·지역적 다양성 특화**: 한영 혼합 인식 / 중·노년층 한국어 방언
 
-특히 숫자 패턴 데이터는 동일한 숫자라도 **비밀번호·주소·날짜·금액·비율·스포츠 기록 등 문맥에 따라 읽는 방식이 달라지는 한국어 특성**을 포함하고 있으며, 한영 혼합 인식 데이터는 한국어 대화 속 영어계 표현과 영어 원형을 함께 제공하여 Code-switching 분석에 활용할 수 있습니다.
-
-### 3.3 Selected Training Dataset
+### 3.4 Selected Training Dataset
 
 실제 Fine-tuning에는 **AI Hub 다화자 음성합성 데이터**를 사용했습니다.
 
@@ -142,7 +263,6 @@ X-Voice는 약 **420K hours**의 다국어 음성으로 학습된 약 **0.4B** �
 - WAV + JSON Transcript Pair
 
 다수의 일반인 화자가 정해진 문장을 명확하게 읽는 형태로 구성되어 있어 **다양한 Speaker Identity를 유지하면서 한국어 발음과 음색을 학습하기에 적합**하다고 판단했습니다.
-
 
 ---
 
@@ -183,7 +303,6 @@ AI Hub 다화자 음성합성 데이터를 X-Voice 학습 형식으로 변환하
 | German / French / Spanish / Italian / Portuguese / Russian | 25 h each |
 | Remaining Languages | 10 h each |
 
-
 ---
 
 ## 6. Korean Frontend Analysis
@@ -203,7 +322,6 @@ Fine-tuning 결과를 평가하는 과정에서 공개 Stage 1 600K Checkpoint�
 - `to_syl=False` → Hangul Jamo 단위로 분해
 
 공개 X-Voice 코드에서는 `to_syl=False`가 사용되고 있었으며, 분해된 Jamo가 eSpeak로 전달되면서 **비정상적인 IPA Sequence**가 생성되는 것을 확인했습니다.
-
 
 Model Weight와 Inference Setting을 고정하고 `to_syl`만 `True`로 변경한 결과,
 

@@ -396,7 +396,19 @@ Stage 1 inference는 [`basic_stage1.toml`](src/x_voice/infer/examples/basic/basi
 
 Ours 15.5k를 실행하려면 TOML의 주요 부분을 다음처럼 수정합니다.
 
-> **Checkpoint 안내:** `vocab.txt`는 이 저장소에 포함되어 있지만, `model_15500.pt`는 약 5.1GB이므로 GitHub에 포함되어 있지 않습니다. 별도로 전달받은 Checkpoint를 `ckpts/XVoice_KO_Replay_1100h_SylFix_v2/model_15500.pt`에 배치해야 합니다.
+> **Checkpoint 안내:** `vocab.txt`는 이 저장소에 포함되어 있지만, 약 5.1GB인 `model_15500.pt`는 GitHub에 포함되어 있지 않습니다. [Notion Checkpoint 페이지](https://app.notion.com/p/ckpt-3cd4e0f5f31480be9d75fbd37a09dcbc?source=copy_link)에서 파일을 다운로드한 뒤 아래 경로에 배치합니다.
+
+```bash
+mkdir -p ckpts/XVoice_KO_Replay_1100h_SylFix_v2
+
+# 브라우저에서 받은 파일의 실제 위치에 맞게 첫 번째 경로를 수정하세요.
+mv ~/Downloads/model_15500.pt \
+  ckpts/XVoice_KO_Replay_1100h_SylFix_v2/model_15500.pt
+
+# 파일 배치 확인
+test -f ckpts/XVoice_KO_Replay_1100h_SylFix_v2/model_15500.pt && \
+  echo "Ours 15.5k checkpoint is ready."
+```
 
 ```toml
 model = "XVoice_Base_Stage1"
@@ -489,7 +501,7 @@ done
 
 - Base output: `inference_outputs/base_result1.wav`–`base_result3.wav`
 - Ours output: `inference_outputs/result1.wav`–`result3.wav`
-- `model_600000.safetensors`와 `model_15500.pt`는 용량 때문에 이 저장소에 포함되지 않으므로 각 경로에 별도로 준비해야 합니다.
+- Base `model_600000.safetensors`는 별도로 준비해야 합니다. Ours `model_15500.pt`는 [Notion Checkpoint 페이지](https://app.notion.com/p/ckpt-3cd4e0f5f31480be9d75fbd37a09dcbc?source=copy_link)에서 다운로드합니다.
 - Local Vocos를 사용할 경우 `my_vocoder/vocos-mel-24khz`에 Vocos weight가 있어야 합니다.
 
 ---

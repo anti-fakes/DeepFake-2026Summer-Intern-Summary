@@ -377,7 +377,114 @@ X-Voice의 Language Routing에서 한글은 Korean, Latin Alphabet은 English로
 
 ---
 
-## 7. Evaluation
+## 7. Inference
+
+Stage 1 inference는 [`basic_stage1.toml`](src/x_voice/infer/examples/basic/basic_stage1.toml)을 읽어 실행합니다. Base 600K와 Ours 15.5k를 비교할 때는 **동일한 Reference Audio, Reference Transcript, Target Text, Inference Setting을 사용하고 `ckpt_file`과 `vocab_file`만 변경**합니다.
+
+### 7.1 TOML에서 수정할 항목
+
+| Field | Description | Example |
+|---|---|---|
+| `ckpt_file` | 사용할 Stage 1 Checkpoint | `ckpts/XVoice_KO_Replay_1100h_SylFix_v2/model_15500.pt` |
+| `vocab_file` | Checkpoint와 함께 사용하는 Vocabulary | `ckpts/XVoice_KO_Replay_1100h_SylFix_v2/vocab.txt` |
+| `ref_audio` | 복제할 화자의 Reference Audio | `reference_audio_ko.wav` |
+| `ref_text` | Reference Audio의 정확한 Transcript | 아래 Reference Script |
+| `gen_text` | 생성할 Target Text | `3명이 회의에 참석했습니다.` |
+| `ref_lang`, `gen_lang` | Reference/Target 언어 | `ko` |
+| `output_dir` | 결과 저장 폴더 | `inference_outputs` |
+| `output_file` | 결과 WAV 파일명 | `result2.wav` |
+
+Ours 15.5k를 실행하려면 TOML의 주요 부분을 다음처럼 수정합니다.
+
+```toml
+model = "XVoice_Base_Stage1"
+model_cfg = "src/x_voice/configs/XVoice_Base_Stage1.yaml"
+ckpt_file = "ckpts/XVoice_KO_Replay_1100h_SylFix_v2/model_15500.pt"
+vocab_file = "ckpts/XVoice_KO_Replay_1100h_SylFix_v2/vocab.txt"
+
+ref_audio = "reference_audio_ko.wav"
+ref_text = "저는 지금 음성 생성 모델을 테스트하고 있습니다. 제 목소리가 얼마나 자연스럽게 생성되는지 확인해보겠습니다."
+gen_text = "3명이 회의에 참석했습니다."
+
+ref_lang = "ko"
+gen_lang = "ko"
+auto_detect_lang = false
+normalize_text = true
+sp_type = "syllable"
+
+output_dir = "inference_outputs"
+output_file = "result2.wav"
+```
+
+TOML을 저장한 뒤 다음 명령을 실행합니다.
+
+```bash
+python -m x_voice.infer.infer_cli_stage1_improved \
+  -c src/x_voice/infer/examples/basic/basic_stage1.toml
+```
+
+### 7.2 동일한 Inference 명령으로 Base/Ours 비교
+
+Base와 Ours에 별도의 Inference 명령이 있는 것이 아닙니다. 두 모델 모두 동일한 `infer_cli_stage1_improved`를 사용하며, 비교 시 `--ckpt_file`과 `--vocab_file`만 변경합니다. 아래 블록은 같은 명령과 같은 입력·Sampling Setting으로 두 Checkpoint를 차례로 실행합니다. Checkpoint를 다른 위치에 저장했다면 상단의 네 경로만 수정한 뒤 전체를 그대로 실행합니다.
+
+```bash
+set -euo pipefail
+
+CONFIG="src/x_voice/infer/examples/basic/basic_stage1.toml"
+BASE_CKPT="ckpts/hf/XVoice_Base_Stage1/model_600000.safetensors"
+BASE_VOCAB="ckpts/hf/XVoice_Base_Stage1/vocab.txt"
+OURS_CKPT="ckpts/XVoice_KO_Replay_1100h_SylFix_v2/model_15500.pt"
+OURS_VOCAB="ckpts/XVoice_KO_Replay_1100h_SylFix_v2/vocab.txt"
+REF_AUDIO="reference_audio_ko.wav"
+REF_TEXT="저는 지금 음성 생성 모델을 테스트하고 있습니다. 제 목소리가 얼마나 자연스럽게 생성되는지 확인해보겠습니다."
+OUTPUT_DIR="inference_outputs"
+
+TEXTS=(
+  "퇴근길에 마트에 들러 우유와 과일을 사고 집으로 돌아왔습니다."
+  "3명이 회의에 참석했습니다."
+  "오늘 5km를 이동했습니다."
+)
+
+mkdir -p "$OUTPUT_DIR"
+
+for i in "${!TEXTS[@]}"; do
+  number=$((i + 1))
+
+  python -m x_voice.infer.infer_cli_stage1_improved \
+    -c "$CONFIG" \
+    --ckpt_file "$BASE_CKPT" \
+    --vocab_file "$BASE_VOCAB" \
+    --ref_audio "$REF_AUDIO" \
+    --ref_text "$REF_TEXT" \
+    --gen_text "${TEXTS[$i]}" \
+    --ref_lang ko \
+    --gen_lang ko \
+    --normalize_text \
+    --output_dir "$OUTPUT_DIR" \
+    --output_file "base_result${number}.wav"
+
+  python -m x_voice.infer.infer_cli_stage1_improved \
+    -c "$CONFIG" \
+    --ckpt_file "$OURS_CKPT" \
+    --vocab_file "$OURS_VOCAB" \
+    --ref_audio "$REF_AUDIO" \
+    --ref_text "$REF_TEXT" \
+    --gen_text "${TEXTS[$i]}" \
+    --ref_lang ko \
+    --gen_lang ko \
+    --normalize_text \
+    --output_dir "$OUTPUT_DIR" \
+    --output_file "result${number}.wav"
+done
+```
+
+- Base output: `inference_outputs/base_result1.wav`–`base_result3.wav`
+- Ours output: `inference_outputs/result1.wav`–`result3.wav`
+- `model_600000.safetensors`와 `model_15500.pt`는 용량 때문에 이 저장소에 포함되지 않으므로 각 경로에 별도로 준비해야 합니다.
+- Local Vocos를 사용할 경우 `my_vocoder/vocos-mel-24khz`에 Vocos weight가 있어야 합니다.
+
+---
+## 8. Evaluation
 
 X-Voice Multilingual Benchmark를 이용하여 **Intra-lingual / Cross-lingual** 조건에서 Base 600K와 최종 **Ours 15.5k** 모델을 비교했습니다.
 
@@ -386,7 +493,7 @@ X-Voice Multilingual Benchmark를 이용하여 **Intra-lingual / Cross-lingual**
 - **WER ↓**: 발음 및 내용 정확도
 - **SIM-o ↑**: Reference와 Generated Speech 사이의 Speaker Similarity
 
-### 7.1 Intra-lingual Results
+### 8.1 Intra-lingual Results
 
 30개 언어에 대해 동일 언어 Reference → 동일 언어 Target 조건으로 평가했습니다.
 
@@ -403,7 +510,7 @@ X-Voice Multilingual Benchmark를 이용하여 **Intra-lingual / Cross-lingual**
 
 한국어뿐 아니라 다수 언어에서 Base 600K 대비 WER 또는 SIM-o가 개선되어, 한국어 Adaptation 과정에서도 기존 Multilingual 능력이 상당 부분 유지되었음을 확인했습니다.
 
-### 7.2 Cross-lingual Results
+### 8.2 Cross-lingual Results
 
 한국어와 영어 사이의 Cross-lingual Voice Cloning 성능을 비교했습니다.
 
@@ -418,9 +525,24 @@ X-Voice Multilingual Benchmark를 이용하여 **Intra-lingual / Cross-lingual**
 
 **EN→KO**에서는 발음 정확도와 Speaker Similarity가 모두 향상된 반면, **KO→EN**에서는 일부 성능 Trade-off가 나타났습니다.
 
+### 8.3 Inference Audio Results
+
+#### Reference Audio
+
+- Audio: [▶ `reference_audio_ko.wav`](reference_audio_ko.wav)
+- Script: “저는 지금 음성 생성 모델을 테스트하고 있습니다. 제 목소리가 얼마나 자연스럽게 생성되는지 확인해보겠습니다.”
+
+Base 600K와 Ours 15.5k는 동일한 Reference Audio와 Target Text를 사용했습니다. 차이는 inference에 사용한 Checkpoint와 해당 Vocabulary입니다.
+
+| No. | Target Text | Base 600K | Ours 15.5k |
+|---:|---|---|---|
+| 1 | 퇴근길에 마트에 들러 우유와 과일을 사고 집으로 돌아왔습니다. | [▶ `base_result1.wav`](base_result1.wav) | [▶ `result1.wav`](result1.wav) |
+| 2 | 3명이 회의에 참석했습니다. | [▶ `base_result2.wav`](base_result2.wav) | [▶ `result2.wav`](result2.wav) |
+| 3 | 오늘 5km를 이동했습니다. | [▶ `base_result3.wav`](base_result3.wav) | [▶ `result3.wav`](result3.wav) |
+
 ---
 
-## 8. Conclusion
+## 9. Conclusion
 
 본 연구에서는 [X-Voice](https://github.com/sunnyxrxrx/X-Voice)를 기반으로 한국어 Zero-shot Cross-lingual Voice Cloning 성능을 개선하기 위해 **Dataset → Fine-tuning → Evaluation → Text Frontend**를 단계적으로 분석했습니다.
 

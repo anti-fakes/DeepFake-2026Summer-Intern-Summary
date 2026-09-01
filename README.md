@@ -16,7 +16,7 @@ Audio Deepfake 및 Voice Cloning 기술을 조사하고, X-Voice의 공개 Stage
 
 **Audio Deepfake**는 AI 기반 음성 생성 및 변환 기술을 이용하여 실제 사람이 발화하지 않은 음성을 생성하거나, 기존 음성을 다른 화자의 음성처럼 변조하는 기술입니다.
 
-Audio Deepfake 생성 방식은 크게 **Speech Synthesis (TTS)**와 **Voice Conversion (VC)**으로 구분할 수 있습니다.
+Audio Deepfake 생성 방식은 크게 Speech Synthesis(TTS)와 Voice Conversion(VC)으로 구분할 수 있습니다.
 
 | Category | Input | Description |
 |---|---|---|

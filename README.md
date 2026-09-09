@@ -1,4 +1,4 @@
-# DeepFake-2026Summer-Intern-Summary (LEE Minseo)
+# DeepFake-2026Summer-Intern-Summary (Lee Minseo)
 
 > **2026 하계 연구연수**
 >
